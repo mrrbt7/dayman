@@ -140,7 +140,6 @@ const nextOccurrence=(dateStr,recurring)=>{
 };
 
 // years since original date
-const yearsUntilNext=dateStr=>{const cur=yearsFrom(dateStr);if(cur===null)return null;return cur+1;};
 const yearsFrom=dateStr=>{if(!dateStr)return null;const orig=new Date(dateStr+'T00:00:00');const today=new Date();today.setHours(0,0,0,0);let yrs=today.getFullYear()-orig.getFullYear();if(today.getMonth()<orig.getMonth()||(today.getMonth()===orig.getMonth()&&today.getDate()<orig.getDate()))yrs--;return yrs;};
 // For countdown items: age they WILL BE on that upcoming day
 const yearsUntilNext=dateStr=>{const cur=yearsFrom(dateStr);if(cur===null)return null;return cur+1;};
@@ -707,7 +706,6 @@ function SprintSection({user}){
 // ═══════════════════════════════════════════════════════════════════
 const HABIT_FREQ_LS='dm_hfreq';const HABIT_HIDE_LS='dm_hhide';
 const DAY_FULL_MAP={MON:'Monday',TUE:'Tuesday',WED:'Wednesday',THU:'Thursday',FRI:'Friday',SAT:'Saturday',SUN:'Sunday'};
-const getTodayAbbr=()=>['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date().getDay()];
 const HABIT_COLORS=['#38bdf8','#4ade80','#fb923c','#f472b6','#a78bfa','#facc15','#34d399','#f87171','#22d3ee','#e879f9'];
 
 function getLast7Dates(){
@@ -1636,9 +1634,9 @@ function SidebarSection({user,onSignOut}){
       <div style={{marginBottom:24}}>
         <div style={{fontSize:10,color:MUTED,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:10}}>Required SQL Columns</div>
         <div style={{background:'#0a0a0a',borderRadius:10,border:`1px solid ${BORDER}`,padding:'12px 14px',fontSize:10,color:'#555',lineHeight:2,fontFamily:'monospace'}}>
-          habits: habit_frequency, weekly_day, sprint_id, streak_start{' · '}
-          countdowns: first_date, direction, last_completed{' · '}
-          sprints_v2: daily_state, frequency_days
+          {'habits: habit_frequency, weekly_day, sprint_id, streak_start'}
+          <br/>{'countdowns: first_date, direction, last_completed'}
+          <br/>{'sprints_v2: daily_state, frequency_days'}
         </div>
       </div>
       <div style={{background:'#111',borderRadius:12,border:`1px solid ${BORDER}`,padding:'14px 16px'}}>

@@ -1063,7 +1063,7 @@ function HabitsSection({user,resetHour=4}){
     setHabits(sorted);setSprints(sp||[]);setBuckets(bk||[]);
     const map={};(l||[]).forEach(r=>{map[`${r.habit_id}_${r.log_date}`]=r.value;});
     setLogs(map);setLoading(false);
-  },[user.id,from60,today]);
+  },[user.id,today]);
 
   useEffect(()=>{load();},[load]);
 
@@ -1179,7 +1179,6 @@ function HabitsSection({user,resetHour=4}){
   const HabitRow=({habit,idx,list,cells,dateLabel})=>{
     const streak=getStreak(habit);const done=isDoneToday(habit);const col=habit.color||BLUE;
     const linkedSprint=habit.sprint_id?sprints.find(s=>s.id===habit.sprint_id):null;
-    const streakUnit=habit.habit_frequency==='weekly'?'wk':'d';
     return(<div style={{display:'flex',alignItems:'center',gap:2,padding:'0 16px',borderBottom:`1px solid #0d0d0d`,minHeight:48}}>
 
       {/* Name */}

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#000000"/>
-<title>DAYMAN 1.8</title>
+<title>DAYMAN 1.9</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -302,19 +302,16 @@ function SprintDetail({sprint,settings,isDone,onClose,onRun,onEdit,onDuplicate,o
         <span style={{fontSize:12,color:isEx?BORDER:ORANGE,flexShrink:0,fontVariantNumeric:'tabular-nums',fontWeight:700}}>{fmtSecs(t.seconds||0)}</span>
       </button>);})}
     </div>
-    <div style={{padding:'10px 16px 32px',borderTop:`1px solid ${BORDER}`,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-      <button onClick={()=>onRun({...sprint,tasks:activeTasks})} disabled={activeTasks.length===0} style={{width:'100%',padding:'16px',borderRadius:12,border:'none',background:activeTasks.length===0?'#2a2a2a':RED,color:activeTasks.length===0?MUTED:'#fff',fontWeight:900,fontSize:16,cursor:activeTasks.length===0?'default':'pointer',fontFamily:'inherit',letterSpacing:-0.5}}>
-        {activeTasks.length===0?'No tasks to run':`▶ Run ${activeTasks.length} Task${activeTasks.length!==1?'s':''} · ${fmtSecs(totalSecs(activeTasks))}`}
+    <div style={{padding:'10px 16px 34px',borderTop:`1px solid ${BORDER}`,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
+      <button onClick={()=>onRun({...sprint,tasks:activeTasks})} disabled={activeTasks.length===0} style={{width:'100%',padding:'15px',borderRadius:12,border:'none',background:activeTasks.length===0?'#2a2a2a':RED,color:activeTasks.length===0?MUTED:'#fff',fontWeight:900,fontSize:16,cursor:activeTasks.length===0?'default':'pointer',fontFamily:'inherit',letterSpacing:-0.5}}>
+        {activeTasks.length===0?'No tasks to run':`▶ Run · ${fmtSecs(totalSecs(activeTasks))}`}
       </button>
       <div style={{display:'flex',gap:8}}>
-        <button onClick={()=>onToggleDone(!isDone)} style={{flex:1,padding:'11px',borderRadius:10,border:`1px solid ${isDone?GREEN+'55':BORDER}`,background:isDone?'#0a1f0a':'transparent',color:isDone?GREEN:MUTED,fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
-          {isDone?<>✓ DONE TODAY</>:<>◯ MARK DONE</>}
+        <button onClick={()=>onToggleDone(!isDone)} style={{flex:2,padding:'11px',borderRadius:10,border:`1px solid ${isDone?GREEN+'55':BORDER}`,background:isDone?'#0a1f0a':'transparent',color:isDone?GREEN:MUTED,fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>
+          {isDone?'✓ Done Today':'◯ Mark Done'}
         </button>
-        <button onClick={onClose} style={{padding:'11px 18px',borderRadius:10,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:18,cursor:'pointer',fontFamily:'inherit'}}>‹ Back</button>
-      </div>
-      <div style={{display:'flex',gap:8}}>
-        <button onClick={()=>onEdit(sprint)} style={{flex:1,padding:'10px',borderRadius:10,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:13,cursor:'pointer',fontFamily:'inherit',fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>✏️ Edit</button>
-        <button onClick={()=>onDuplicate(sprint)} style={{flex:1,padding:'10px',borderRadius:10,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:13,cursor:'pointer',fontFamily:'inherit',fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>📋 Duplicate</button>
+        <button onClick={()=>onEdit(sprint)} style={{flex:1,padding:'11px',borderRadius:10,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>✏️ Edit</button>
+        <button onClick={onClose} style={{flex:1,padding:'11px',borderRadius:10,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>‹ Back</button>
       </div>
     </div>
   </div>);
@@ -576,8 +573,33 @@ function SprintRunner({sprint,onClose,onLogRun,onComplete}){
   </div>);
 }
 
+// Calculate sprint streak: consecutive days marked done from sprint_runs
+const calcSprintStreak=(runs,sprintId,resetHour)=>{
+  const spRuns=runs.filter(r=>r.sprint_id===sprintId);
+  if(!spRuns.length)return 0;
+  // Build set of day keys that had a run
+  const daySet=new Set(spRuns.map(r=>{
+    const d=new Date(r.created_at);
+    // Apply reset hour: if before resetHour, belongs to previous day
+    if(d.getHours()<resetHour){d.setDate(d.getDate()-1);}
+    return d.toISOString().split('T')[0];
+  }));
+  // Count consecutive days ending today/yesterday
+  const today=new Date();if(today.getHours()<resetHour)today.setDate(today.getDate()-1);
+  let streak=0;
+  for(let i=0;i<90;i++){
+    const d=new Date(today);d.setDate(today.getDate()-i);
+    const key=d.toISOString().split('T')[0];
+    if(daySet.has(key))streak++;
+    else if(i===0)continue;// today not done yet — don't break
+    else break;
+  }
+  return streak;
+};
+
 function SprintSection({user}){
   const [sprints,setSprints]=useState([]);const [loadingList,setLoadingList]=useState(true);
+  const [allRuns,setAllRuns]=useState([]);
   const [view,setView]=useState('list');
   const [editTarget,setEditTarget]=useState(null);const [runTarget,setRunTarget]=useState(null);
   const [previewTarget,setPreviewTarget]=useState(null);
@@ -588,8 +610,14 @@ function SprintSection({user}){
 
   const loadSprints=useCallback(async()=>{
     setLoadingList(true);
-    const{data,error}=await db.from('sprints_v2').select('*').eq('user_id',user.id).order('created_at',{ascending:true});
-    if(!error)setSprints(data||[]);setLoadingList(false);
+    const from90=new Date();from90.setDate(from90.getDate()-90);
+    const[{data,error},{data:runs}]=await Promise.all([
+      db.from('sprints_v2').select('*').eq('user_id',user.id).order('created_at',{ascending:true}),
+      db.from('sprint_runs').select('sprint_id,created_at').eq('user_id',user.id).gte('created_at',from90.toISOString())
+    ]);
+    if(!error)setSprints(data||[]);
+    setAllRuns(runs||[]);
+    setLoadingList(false);
   },[user.id]);
 
   useEffect(()=>{loadSprints();},[loadSprints]);
@@ -632,12 +660,19 @@ function SprintSection({user}){
     return SECTION_ORDER.filter(s=>map[s]?.length).map(s=>({label:s,items:map[s]}));
   },[tabList,sprintTab,timeFilter]);
 
+  const streakMap=useMemo(()=>{
+    const m={};sprints.forEach(s=>{m[s.id]=calcSprintStreak(allRuns,s.id,resetHour);});return m;
+  },[allRuns,sprints,resetHour]);
   const doneCount=doneSprints.length;
 
   const SprintCard=({sp})=>{
     const done=doneMap[sp.id];
     return(<div onClick={()=>setPreviewTarget(sp)} style={{background:done?'#0a0f0a':CARD,borderRadius:12,border:`1px solid ${done?GREEN+'44':BORDER}`,padding:'13px 14px',marginBottom:8,cursor:'pointer'}}>
-      {sp.scheduled_time&&<div style={{fontSize:20,fontWeight:900,color:done?'#30D158aa':sprintTimeColor(sp.scheduled_time),letterSpacing:-0.5,lineHeight:1,marginBottom:6}}>{fmtTime12(sp.scheduled_time)}</div>}
+      <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:6}}>
+        {sp.scheduled_time&&<div style={{fontSize:20,fontWeight:900,color:done?'#30D158aa':sprintTimeColor(sp.scheduled_time),letterSpacing:-0.5,lineHeight:1}}>{fmtTime12(sp.scheduled_time)}</div>}
+        {sp.scheduled_time&&totalSecs(sp.tasks)>0&&<div style={{fontSize:12,color:MUTED,fontWeight:600}}>({fmtSecs(totalSecs(sp.tasks))} total)</div>}
+        {!sp.scheduled_time&&totalSecs(sp.tasks)>0&&<div style={{fontSize:13,color:MUTED,fontWeight:600}}>{fmtSecs(totalSecs(sp.tasks))} total</div>}
+      </div>
       <div style={{display:'flex',alignItems:'center',gap:8}}>
         <span style={{fontSize:20,flexShrink:0}}>{sp.emoji||'⚡'}</span>
         <div style={{flex:1,minWidth:0}}>
@@ -646,6 +681,7 @@ function SprintSection({user}){
             <span>{(sp.tasks||[]).length} tasks</span>
             {totalSecs(sp.tasks)>0&&<><span style={{color:BORDER}}>·</span><span style={{color:ORANGE}}>{fmtSecs(totalSecs(sp.tasks))}</span></>}
             {sp.frequency_days&&<><span style={{color:BORDER}}>·</span><span style={{color:LIME,fontSize:10,fontWeight:700}}>{sp.frequency_days.split(',').map(d=>DAY_LABEL[d]||d).join(' ')}</span></>}
+            {(streakMap[sp.id]??0)>0&&<><span style={{color:BORDER}}>·</span><span style={{color:sp.streak_color||LIME,fontWeight:700}}>{streakMap[sp.id]}d streak</span></>}
           </div>
         </div>
         <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
@@ -1145,7 +1181,7 @@ function HabitsSection({user}){
       <div style={{width:54,flexShrink:0,textAlign:'right',paddingRight:4}}>
         {streak>0?(<div style={{fontSize:11,fontWeight:700,color:col,lineHeight:1.2,textAlign:'right'}}>
           <div style={{fontSize:13}}>{streak}</div>
-          <div style={{fontSize:8,opacity:0.8}}>{streakUnit} streak</div>
+          <div style={{fontSize:8,opacity:0.8}}>{habit.habit_frequency==='weekly'?'weeks':'days'}</div>
         </div>):<div/>}
       </div>
       {/* Cells */}
@@ -1208,16 +1244,7 @@ function HabitsSection({user}){
       {buckets.length>0&&buckets.map(bk=>(<button key={bk.id} className="pill-tab inactive" style={{borderColor:BORDER,background:'#141414',color:bk.color||MUTED}}>{bk.emoji} {bk.name}</button>))}
     </div>
 
-    {/* Day headers for daily section */}
-    {habTab==='today'&&(<div style={{padding:'4px 16px 0',flexShrink:0}}>
-      <div style={{display:'flex',alignItems:'flex-end',gap:2}}>
-        <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
-        {dates.map(d=>(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
-          <div style={{fontSize:9,color:'#555',marginBottom:1}}>{dayLabel(d)}</div>
-          <div style={{fontSize:11,fontWeight:d===today?700:400,color:d===today?TEXT:'#666',background:d===today?'#1a1a1a':'none',borderRadius:5,width:28,height:24,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{dayNum(d)}</div>
-        </div>))}
-      </div>
-    </div>)}
+
 
     <div style={{flex:1,overflowY:'auto',paddingBottom:NAV_H+12}}>
       {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:40}}><Spinner size={22} color={GREEN}/></div>}
@@ -1246,7 +1273,20 @@ function HabitsSection({user}){
         </>)}
         {/* Daily habits */}
         {habits.length===0&&<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>✓</div><div style={{fontSize:15,fontWeight:700,marginBottom:6}}>No habits yet</div><div style={{fontSize:13}}>Tap + to add your first habit</div></div>}
-        {applyFilters(dailyHabits).map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={dailyCells(habit)}/>)}
+        {dailyHabits.length>0&&(<>
+          <div style={{padding:'8px 16px 0',display:'flex',alignItems:'center',gap:8}}>
+            <div style={{fontSize:10,color:MUTED,fontWeight:700,letterSpacing:1,textTransform:'uppercase'}}>Daily</div>
+          </div>
+          {/* Daily date header — inline above daily habits */}
+          <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'2px 16px 2px',marginBottom:2}}>
+            <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
+            {dates.map(d=>(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
+              <div style={{fontSize:9,color:'#888',marginBottom:1}}>{dayLabel(d)}</div>
+              <div style={{fontSize:11,fontWeight:d===today?700:400,color:d===today?TEXT:'#666',background:d===today?'#1a1a1a':'none',borderRadius:5,width:28,height:24,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{dayNum(d)}</div>
+            </div>))}
+          </div>
+          {applyFilters(dailyHabits).map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={dailyCells(habit)}/>)}
+        </>)}
         {hideCompleted&&completedToday>0&&<div style={{textAlign:'center',padding:'12px',fontSize:12,color:'#444'}}>{completedToday} hidden · <button onClick={()=>setHideCompleted(false)} style={{background:'none',border:'none',color:GREEN,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Show all</button></div>}
       </>)}
 
@@ -1851,7 +1891,7 @@ function SidebarSection({user,onSignOut}){
         </div>
       </div>
       <div style={{background:'#111',borderRadius:12,border:`1px solid ${BORDER}`,padding:'14px 16px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><span style={{color:MUTED,fontSize:13}}>Version</span><span style={{fontSize:13,fontWeight:700,color:LIME}}>DAYMAN 1.8</span></div>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><span style={{color:MUTED,fontSize:13}}>Version</span><span style={{fontSize:13,fontWeight:700,color:LIME}}>DAYMAN 1.9</span></div>
         <div style={{display:'flex',justifyContent:'space-between'}}><span style={{color:MUTED,fontSize:13}}>Database</span><span style={{fontSize:13,color:TEXT}}>MR Supabase</span></div>
       </div>
     </div>

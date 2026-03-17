@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#000000"/>
-<title>DAYMAN</title>
+<title>DAYMAN 1.3</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -26,6 +26,7 @@ input,textarea,select{font-size:16px!important;color-scheme:dark;font-family:inh
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .fade-in{animation:fadeIn .2s ease-out}
 @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+.section-header{height:48px;min-height:48px;max-height:48px;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid #2a2a2a;flex-shrink:0;}
 input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 </style>
@@ -124,6 +125,12 @@ const nextOccurrence=(dateStr,recurring)=>{
   else if(recurring==='yearly')while(d<today)d.setFullYear(d.getFullYear()+1);
   return d.toISOString().split('T')[0];
 };
+
+// years since original date
+const yearsFrom=dateStr=>{if(!dateStr)return null;const orig=new Date(dateStr+'T00:00:00');const today=new Date();today.setHours(0,0,0,0);let yrs=today.getFullYear()-orig.getFullYear();if(today.getMonth()<orig.getMonth()||(today.getMonth()===orig.getMonth()&&today.getDate()<orig.getDate()))yrs--;return yrs;};
+// sprint day helper
+const getTodayAbbr=()=>['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date().getDay()];
+const isTodaySprint=sp=>{if(!sp.frequency_days)return true;return sp.frequency_days.split(',').includes(getTodayAbbr());};
 
 // ═══════════════════════════════════════════════════════════════════
 // SHARED UI COMPONENTS
@@ -496,9 +503,15 @@ function SprintRunner({sprint,onClose,onLogRun,onComplete}){
         <div style={{fontSize:28,fontWeight:900,lineHeight:1.2,transition:'opacity .3s',opacity:transitioning?0.3:1}}>{currentTask.title}</div>
         {phase==='idle'&&<div style={{fontSize:12,color:MUTED,marginTop:6}}>{fmtSecs(currentTask.seconds)} · tap Start when ready</div>}
         {currentTask.notes&&(<div style={{marginTop:10,padding:'10px 14px',borderRadius:9,background:'#0e0900',border:`1px solid ${ORANGE}33`,fontSize:13,lineHeight:1.6,textAlign:'left',whiteSpace:'pre-wrap'}}>{currentTask.notes}</div>)}
-        {(currentTask.device||currentTask.backup_device)&&(<div style={{marginTop:8,display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
-          {currentTask.device&&<div style={{padding:'5px 12px',borderRadius:7,background:'#0a0a18',border:'1px solid #4444aa44',display:'flex',alignItems:'center',gap:5}}><span style={{fontSize:11}}>📱</span><span style={{fontSize:12,fontWeight:700}}>{currentTask.device}</span></div>}
-          {currentTask.backup_device&&<div style={{padding:'5px 12px',borderRadius:7,background:'#0a0a0a',border:`1px solid ${BORDER}`,display:'flex',alignItems:'center',gap:5}}><span style={{fontSize:11}}>🔁</span><span style={{fontSize:12,color:MUTED,fontWeight:600}}>{currentTask.backup_device}</span></div>}
+        {(currentTask.device||currentTask.backup_device)&&(<div style={{marginTop:10,display:'flex',gap:10,flexWrap:'wrap',justifyContent:'center'}}>
+          {currentTask.device&&(<div style={{flex:1,minWidth:120,padding:'10px 16px',borderRadius:12,background:'#0d0d1f',border:'2px solid #5555bb66',display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:22,flexShrink:0}}>📱</span>
+            <div><div style={{fontSize:9,color:'#7777bb',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:2}}>Device</div><div style={{fontSize:16,fontWeight:800,color:TEXT}}>{currentTask.device}</div></div>
+          </div>)}
+          {currentTask.backup_device&&(<div style={{flex:1,minWidth:120,padding:'10px 16px',borderRadius:12,background:'#0f0f0f',border:`2px solid ${BORDER}`,display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:22,flexShrink:0}}>🔁</span>
+            <div><div style={{fontSize:9,color:MUTED,fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:2}}>Backup</div><div style={{fontSize:16,fontWeight:800,color:MUTED}}>{currentTask.backup_device}</div></div>
+          </div>)}
         </div>)}
       </div>)}
       <div ref={containerRef} style={{width:'100%',maxWidth:440,flexShrink:0}}>
@@ -539,12 +552,12 @@ function SprintRunner({sprint,onClose,onLogRun,onComplete}){
 
 function SprintSection({user}){
   const [sprints,setSprints]=useState([]);const [loadingList,setLoadingList]=useState(true);
-  const [view,setView]=useState('list');// list | edit | run | detail
+  const [view,setView]=useState('list');
   const [editTarget,setEditTarget]=useState(null);const [runTarget,setRunTarget]=useState(null);
   const [previewTarget,setPreviewTarget]=useState(null);
   const [settings,setSettings]=useState(()=>loadSettings(user.id));
   const [showHistory,setShowHistory]=useState(false);const [showSettings,setShowSettings]=useState(false);
-  const [showCompleted,setShowCompleted]=useState(false);
+  const [sprintTab,setSprintTab]=useState('today');// today|done|notyet
 
   const loadSprints=useCallback(async()=>{
     setLoadingList(true);
@@ -573,47 +586,78 @@ function SprintSection({user}){
 
   const resetHour=settings.resetHour??4;
   const doneMap=useMemo(()=>{const m={};sprints.forEach(s=>{m[s.id]=resolveDS(s.daily_state,resetHour).done;});return m;},[sprints,resetHour]);
+
+  // Sort by scheduled time
   const sorted=useMemo(()=>[...sprints].sort((a,b)=>{if(a.scheduled_time&&b.scheduled_time)return a.scheduled_time.localeCompare(b.scheduled_time);if(a.scheduled_time)return -1;if(b.scheduled_time)return 1;return 0;}),[sprints]);
-  const displayed=useMemo(()=>showCompleted?sorted:sorted.filter(s=>!doneMap[s.id]),[sorted,doneMap,showCompleted]);
-  const doneCount=sorted.filter(s=>doneMap[s.id]).length;
-  const sections=useMemo(()=>{const map={};displayed.forEach(sp=>{const sec=getTimeSection(sp.scheduled_time);if(!map[sec])map[sec]=[];map[sec].push(sp);});return SECTION_ORDER.filter(s=>map[s]?.length).map(s=>({label:s,items:map[s]}));},[displayed]);
+
+  // Tab buckets
+  const todaySprints=useMemo(()=>sorted.filter(s=>isTodaySprint(s)&&!doneMap[s.id]),[sorted,doneMap]);
+  const doneSprints=useMemo(()=>sorted.filter(s=>doneMap[s.id]),[sorted,doneMap]);
+  const notYetSprints=useMemo(()=>sorted.filter(s=>!isTodaySprint(s)&&!doneMap[s.id]),[sorted,doneMap]);
+
+  const tabList=sprintTab==='today'?todaySprints:sprintTab==='done'?doneSprints:notYetSprints;
+
+  // Time sections for TODAY tab only
+  const sections=useMemo(()=>{
+    if(sprintTab!=='today')return null;
+    const map={};tabList.forEach(sp=>{const sec=getTimeSection(sp.scheduled_time);if(!map[sec])map[sec]=[];map[sec].push(sp);});
+    return SECTION_ORDER.filter(s=>map[s]?.length).map(s=>({label:s,items:map[s]}));
+  },[tabList,sprintTab]);
+
+  const doneCount=doneSprints.length;
+
+  const SprintCard=({sp})=>{
+    const done=doneMap[sp.id];
+    return(<div onClick={()=>setPreviewTarget(sp)} style={{background:done?'#0a0f0a':CARD,borderRadius:12,border:`1px solid ${done?GREEN+'44':BORDER}`,padding:'13px 14px',marginBottom:8,cursor:'pointer'}}>
+      {sp.scheduled_time&&<div style={{fontSize:20,fontWeight:900,color:done?'#30D158aa':ORANGE,letterSpacing:-0.5,lineHeight:1,marginBottom:6}}>{fmtTime12(sp.scheduled_time)}</div>}
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <span style={{fontSize:20,flexShrink:0}}>{sp.emoji||'⚡'}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:800,fontSize:14,color:done?'#30D158aa':TEXT,textDecoration:done?'line-through':'none',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sp.name}</div>
+          <div style={{fontSize:11,color:MUTED,marginTop:2,display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
+            <span>{(sp.tasks||[]).length} tasks</span>
+            {totalSecs(sp.tasks)>0&&<><span style={{color:BORDER}}>·</span><span style={{color:ORANGE}}>{fmtSecs(totalSecs(sp.tasks))}</span></>}
+            {sp.frequency_days&&<><span style={{color:BORDER}}>·</span><span style={{color:LIME,fontSize:10,fontWeight:700}}>{sp.frequency_days.split(',').map(d=>DAY_LABEL[d]||d).join(' ')}</span></>}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
+          <button onClick={e=>{e.stopPropagation();setRunTarget(sp);setView('run');}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:RED,color:'#fff',fontWeight:900,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>▶ Run</button>
+          <button onClick={e=>{e.stopPropagation();saveDailyState(sp.id,{done:!done});}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:done?GREEN:'#1a3a1a',color:done?'#000':GREEN,fontWeight:900,fontSize:12,cursor:'pointer',fontFamily:'inherit',border:`1px solid ${GREEN}55`}}>{done?'✓ Done':'Done!'}</button>
+          <div onClick={e=>e.stopPropagation()}><DotMenu items={[{label:'▶ Run',action:()=>{setRunTarget(sp);setView('run');}},{label:'Edit',action:()=>{setEditTarget(sp);setView('edit');}},{label:'Duplicate',action:()=>handleDuplicate(sp)},'---',{label:'Delete',danger:true,action:()=>handleDelete(sp.id,sp.name)}]}/></div>
+        </div>
+      </div>
+    </div>);
+  };
 
   if(view==='edit')return(<SprintEditor sprint={editTarget} onSave={saveSprint} onCancel={()=>{setEditTarget(null);setView('list');}} onDelete={deleteSprint}/>);
   if(view==='run'&&runTarget)return(<SprintRunner sprint={runTarget} onClose={()=>{setRunTarget(null);setView('list');loadSprints();}} onLogRun={logRun} onComplete={id=>saveDailyState(id,{done:true})}/>);
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
-    <div style={{padding:'12px 16px 10px',borderBottom:`1px solid ${BORDER}`,display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-      <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1,lineHeight:1}}><span style={{color:LIME}}>⚡</span> SPRINT</span></div>
-      {sorted.length>0&&(<div style={{background:doneCount===sorted.length?'#0a1f0a':INSET,border:`1px solid ${doneCount===sorted.length?GREEN+'44':BORDER}`,borderRadius:7,padding:'3px 9px',display:'flex',alignItems:'center',gap:4}}><span style={{fontSize:12,color:doneCount===sorted.length?GREEN:MUTED,fontWeight:700}}>{doneCount}/{sorted.length}</span><span style={{fontSize:10,color:doneCount===sorted.length?GREEN:MUTED}}>done</span></div>)}
+    {/* Fixed header */}
+    <div className="section-header">
+      <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:LIME}}>⚡</span> SPRINT</span></div>
       <DotMenu items={[{label:'↻ Refresh',action:loadSprints},{label:'📊 Run History',action:()=>setShowHistory(true)},{label:'⚙️ Settings',action:()=>setShowSettings(true)}]}/>
     </div>
-    <div style={{flex:1,overflowY:'auto',padding:'12px 16px',paddingBottom:NAV_H+12}}>
-      {loadingList&&<div style={{display:'flex',justifyContent:'center',paddingTop:60}}><Spinner size={24}/></div>}
-      {!loadingList&&sorted.length===0&&(<div style={{textAlign:'center',padding:'80px 0',color:MUTED}}><div style={{fontSize:52,marginBottom:14}}>⚡</div><div style={{fontSize:16,fontWeight:800,color:TEXT,marginBottom:8}}>No sprints yet</div></div>)}
-      {!loadingList&&sections.map((sec,si)=>(<div key={sec.label} style={{marginBottom:si<sections.length-1?20:0}}>
-        <div style={{fontSize:10,color:MUTED,letterSpacing:3,fontWeight:800,marginBottom:8,display:'flex',alignItems:'center',gap:6}}><span>{SECTION_EMOJI[sec.label]}</span><span>{sec.label}</span></div>
-        {sec.items.map(sp=>{const done=doneMap[sp.id];return(<div key={sp.id} onClick={()=>setPreviewTarget(sp)} style={{background:done?'#0a0f0a':CARD,borderRadius:12,border:`1px solid ${done?GREEN+'44':BORDER}`,padding:'13px 14px',marginBottom:8,opacity:done?0.7:1,cursor:'pointer'}}>
-          {sp.scheduled_time&&<div style={{fontSize:22,fontWeight:900,color:done?'#30D158aa':ORANGE,letterSpacing:-0.5,lineHeight:1,marginBottom:6}}>{fmtTime12(sp.scheduled_time)}</div>}
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:20,flexShrink:0}}>{sp.emoji||'⚡'}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:800,fontSize:14,color:done?'#30D158aa':TEXT,textDecoration:done?'line-through':'none',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sp.name}</div>
-              <div style={{fontSize:11,color:MUTED,marginTop:2,display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
-                <span>{(sp.tasks||[]).length} tasks</span>
-                {totalSecs(sp.tasks)>0&&<><span style={{color:BORDER}}>·</span><span style={{color:ORANGE}}>{fmtSecs(totalSecs(sp.tasks))}</span></>}
-              </div>
-            </div>
-            <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
-              <button onClick={e=>{e.stopPropagation();setRunTarget(sp);setView('run');}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:LIME,color:'#000',fontWeight:900,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>▶ Run</button>
-              <button onClick={e=>{e.stopPropagation();saveDailyState(sp.id,{done:!done});}} style={{padding:'6px 12px',borderRadius:20,border:`2px solid ${done?GREEN:BORDER}`,background:done?GREEN:'transparent',color:done?'#000':MUTED,fontWeight:800,fontSize:11,cursor:'pointer',fontFamily:'inherit',transition:'all .2s'}}>{done?'✓ DONE!':'DONE!'}</button>
-              <div onClick={e=>e.stopPropagation()}><DotMenu items={[{label:'▶ Run',action:()=>{setRunTarget(sp);setView('run');}},{label:'Edit',action:()=>{setEditTarget(sp);setView('edit');}},{label:'Duplicate',action:()=>handleDuplicate(sp)},'---',{label:'Delete',danger:true,action:()=>handleDelete(sp.id,sp.name)}]}/></div>
-            </div>
-          </div>
-        </div>);})}
-      </div>))}
+    {/* Tabs */}
+    <div style={{display:'flex',borderBottom:`1px solid ${BORDER}`,flexShrink:0}}>
+      {[['today',`Today (${todaySprints.length})`,'#CAFF4C'],['done',`Done (${doneCount})`,'#30D158'],['notyet',`Not Yet (${notYetSprints.length})`,'#777']].map(([k,l,col])=>(
+        <button key={k} onClick={()=>setSprintTab(k)} style={{flex:1,padding:'9px 0',background:'none',border:'none',cursor:'pointer',fontSize:11,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:sprintTab===k?col:MUTED,borderBottom:`2px solid ${sprintTab===k?col:'transparent'}`,fontFamily:'inherit'}}>{l}</button>
+      ))}
     </div>
-    <div style={{padding:'10px 16px 22px',borderTop:`1px solid ${BORDER}`,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-      {doneCount>0&&<button onClick={()=>setShowCompleted(v=>!v)} style={{width:'100%',padding:'9px',borderRadius:8,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:12,cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>{showCompleted?`Hide ${doneCount} completed`:`Show ${doneCount} completed`}</button>}
+    <div style={{flex:1,overflowY:'auto',padding:'10px 16px',paddingBottom:NAV_H+12}}>
+      {loadingList&&<div style={{display:'flex',justifyContent:'center',paddingTop:60}}><Spinner size={24}/></div>}
+      {!loadingList&&tabList.length===0&&(<div style={{textAlign:'center',padding:'70px 0',color:MUTED}}>
+        <div style={{fontSize:40,marginBottom:12}}>{sprintTab==='today'?'⚡':sprintTab==='done'?'✓':'📅'}</div>
+        <div style={{fontSize:14,fontWeight:700,color:TEXT,marginBottom:6}}>{sprintTab==='today'?'Nothing for today':sprintTab==='done'?'Nothing done yet':'No upcoming sprints'}</div>
+        {sprintTab==='notyet'&&<div style={{fontSize:12,color:MUTED}}>Sprints with specific day schedules that aren't today will appear here.</div>}
+      </div>)}
+      {!loadingList&&sprintTab==='today'&&sections&&sections.map((sec,si)=>(<div key={sec.label} style={{marginBottom:si<sections.length-1?16:0}}>
+        <div style={{fontSize:10,color:MUTED,letterSpacing:3,fontWeight:800,marginBottom:8,display:'flex',alignItems:'center',gap:6}}><span>{SECTION_EMOJI[sec.label]}</span><span>{sec.label}</span></div>
+        {sec.items.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
+      </div>))}
+      {!loadingList&&sprintTab!=='today'&&tabList.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
+    </div>
+    <div style={{padding:'10px 16px 22px',borderTop:`1px solid ${BORDER}`,flexShrink:0}}>
       <button onClick={()=>{setEditTarget(null);setView('edit');}} style={{width:'100%',padding:'14px',borderRadius:10,border:'none',background:LIME,color:'#000',fontWeight:900,fontSize:15,fontFamily:'inherit',cursor:'pointer'}}>+ New Sprint</button>
     </div>
     {previewTarget&&(<SprintDetail sprint={previewTarget} settings={settings} isDone={!!resolveDS(previewTarget.daily_state,resetHour).done} onClose={()=>setPreviewTarget(null)} onRun={sp=>{setPreviewTarget(null);setRunTarget(sp);setView('run');}} onEdit={sp=>{setPreviewTarget(null);setEditTarget(sp);setView('edit');}} onDuplicate={sp=>{setPreviewTarget(null);handleDuplicate(sp);}} onSaveSkipped={(id,ids)=>saveDailyState(id,{skipped:ids})} onToggleDone={done=>saveDailyState(previewTarget.id,{done})}/>)}
@@ -634,6 +678,145 @@ function dayLabel(dateStr){
   const d=new Date(dateStr+'T00:00:00');return['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
 }
 function dayNum(dateStr){return new Date(dateStr+'T00:00:00').getDate();}
+
+function HabitDetailScreen({habit,user,onClose,onSave,onDelete}){
+  const [logs60,setLogs60]=useState({});
+  const [loading60,setLoading60]=useState(true);
+  const [name,setName]=useState(habit.name||'');
+  const [time,setTime]=useState(habit.scheduled_time||'');
+  const [seed,setSeed]=useState(habit.streak_seed||0);
+  const [color,setColor]=useState(habit.color||HABIT_COLORS[0]);
+
+  // Build last 60 days
+  const dates60=useMemo(()=>{const d=[];for(let i=59;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);d.push(dt.toISOString().split('T')[0]);}return d;},[]);
+  const today=dates60[59];
+
+  useEffect(()=>{
+    const from=dates60[0];
+    db.from('habit_logs').select('*').eq('habit_id',habit.id).gte('log_date',from).lte('log_date',today)
+      .then(({data})=>{const m={};(data||[]).forEach(r=>{m[r.log_date]=r.value;});setLogs60(m);setLoading60(false);});
+  },[habit.id]);
+
+  // Streak calc
+  const streak=useMemo(()=>{
+    let s=0;
+    for(let i=59;i>=0;i--){
+      const d=dates60[59-i]||dates60[0];// iterate from today backwards
+    }
+    // iterate from today back
+    for(let i=0;i<60;i++){
+      const dt=new Date();dt.setDate(dt.getDate()-i);const ds=dt.toISOString().split('T')[0];
+      const val=logs60[ds]??null;
+      const tracked=habit.type==='bool'?(val===1||val===-1):(val!==null&&val>0);
+      if(tracked)s++;
+      else if(i===0)continue;
+      else break;
+    }
+    return s+(habit.streak_seed||0);
+  },[logs60,habit]);
+
+  // Build calendar weeks (8 weeks, Mon-Sun)
+  const weeks=useMemo(()=>{
+    const all=[...dates60];
+    // Pad front to start on Monday
+    const firstDow=new Date(all[0]+'T00:00:00').getDay();// 0=Sun
+    const padNeeded=firstDow===0?6:firstDow-1;// days to pad at front
+    const padded=Array(padNeeded).fill(null).concat(all);
+    const ws=[];for(let i=0;i<padded.length;i+=7){ws.push(padded.slice(i,i+7));}
+    return ws;
+  },[dates60]);
+
+  const cellColor=(date)=>{
+    if(!date)return'transparent';
+    const val=logs60[date]??null;
+    const col=habit.color||BLUE;
+    if(habit.type==='bool'){if(val===1)return col;if(val===-1)return'#333';}
+    else{if(val>0)return col;}
+    return'#1a1a1a';
+  };
+  const cellIcon=(date)=>{
+    if(!date)return'';
+    const val=logs60[date]??null;
+    if(habit.type==='bool'){if(val===1)return'✓';if(val===-1)return'—';}
+    else{if(val>0)return val;}
+    return'';
+  };
+
+  const save=()=>{if(!name.trim())return;onSave(habit.id,{name:name.trim(),scheduled_time:time||null,streak_seed:seed,color});};
+
+  return(<div style={{position:'fixed',inset:0,background:'#000',zIndex:500,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+    {/* Header */}
+    <div className="section-header">
+      <button onClick={onClose} style={{background:'none',border:'none',color:MUTED,fontSize:26,cursor:'pointer',lineHeight:1,marginLeft:-4}}>‹</button>
+      <div style={{flex:1,fontWeight:900,fontSize:16,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:habit.color||BLUE}}>{habit.name}</div>
+      <button onClick={()=>{if(window.confirm('Delete habit and all history?'))onDelete(habit.id);}} style={{background:'none',border:'none',color:'#ef444488',cursor:'pointer',fontSize:13,fontFamily:'inherit',padding:'4px 8px'}}>Delete</button>
+    </div>
+
+    <div style={{flex:1,overflowY:'auto',padding:'0 16px 40px'}}>
+      {/* Big streak */}
+      <div style={{textAlign:'center',padding:'28px 0 20px'}}>
+        <div style={{fontSize:80,fontWeight:900,color:habit.color||BLUE,lineHeight:1,fontVariantNumeric:'tabular-nums'}}>{streak}</div>
+        <div style={{fontSize:14,color:MUTED,letterSpacing:2,fontWeight:700,marginTop:6,textTransform:'uppercase'}}>Day Streak 🔥</div>
+        {habit.scheduled_time&&<div style={{fontSize:12,color:ORANGE,marginTop:6}}>⏰ {fmtTime12(habit.scheduled_time)}</div>}
+      </div>
+
+      {/* Calendar */}
+      <div style={{marginBottom:24}}>
+        <div style={{fontSize:10,color:MUTED,letterSpacing:2,fontWeight:700,marginBottom:10}}>LAST 60 DAYS</div>
+        {/* Day labels */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:3}}>
+          {['M','T','W','T','F','S','S'].map((d,i)=>(<div key={i} style={{textAlign:'center',fontSize:9,color:'#444',fontWeight:700}}>{d}</div>))}
+        </div>
+        {loading60&&<div style={{display:'flex',justifyContent:'center',padding:'20px'}}><Spinner size={18} color={habit.color||BLUE}/></div>}
+        {!loading60&&weeks.map((week,wi)=>(<div key={wi} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:3}}>
+          {week.map((date,di)=>{
+            const isToday=date===today;
+            const bg=cellColor(date);
+            const icon=cellIcon(date);
+            const isFuture=date&&date>today;
+            return(<div key={di} style={{aspectRatio:'1',borderRadius:6,background:date?bg:'transparent',border:isToday?`2px solid ${habit.color||BLUE}`:'1px solid transparent',display:'flex',alignItems:'center',justifyContent:'center',opacity:isFuture?0.2:1}}>
+              <span style={{fontSize:11,fontWeight:700,color:bg==='#1a1a1a'||bg==='transparent'?'#333':'#000'}}>{icon}</span>
+            </div>);
+          })}
+        </div>))}
+        {/* Legend */}
+        <div style={{display:'flex',gap:12,marginTop:8,flexWrap:'wrap'}}>
+          {[[habit.color||BLUE,'Done'],['#333','Skipped (streak safe)'],['#1a1a1a','Missed']].map(([col,lbl])=>(<div key={lbl} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:10,height:10,borderRadius:2,background:col,flexShrink:0}}/><span style={{fontSize:10,color:MUTED}}>{lbl}</span></div>))}
+        </div>
+      </div>
+
+      {/* Edit fields */}
+      <div style={{borderTop:`1px solid ${BORDER}`,paddingTop:20}}>
+        <div style={{fontSize:10,color:MUTED,letterSpacing:2,fontWeight:700,marginBottom:14}}>EDIT HABIT</div>
+        <FormInput label="Name"><input value={name} onChange={e=>setName(e.target.value)} style={inp()}/></FormInput>
+        <FormInput label="Time (optional)">
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...inp(),flex:1,color:time?ORANGE:MUTED}}/>
+            {time&&<button onClick={()=>setTime('')} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',color:MUTED,cursor:'pointer',fontSize:12,fontFamily:'inherit',flexShrink:0}}>Clear</button>}
+          </div>
+          {time&&<div style={{fontSize:11,color:ORANGE,marginTop:5,fontWeight:700}}>⏰ {fmtTime12(time)}</div>}
+        </FormInput>
+        <FormInput label="Color">
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            {HABIT_COLORS.map(col=>(<button key={col} onClick={()=>setColor(col)} style={{width:30,height:30,borderRadius:'50%',background:col,border:'none',cursor:'pointer',outline:color===col?'2px solid #fff':'none',outlineOffset:2}}/>))}
+          </div>
+        </FormInput>
+        <FormInput label="Streak Seed — days before app tracking">
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
+            <button onClick={()=>setSeed(s=>Math.max(0,s-1))} style={{width:40,height:40,borderRadius:8,border:`1px solid ${BORDER}`,background:'#1a1a1a',color:TEXT,cursor:'pointer',fontSize:20,fontFamily:'inherit',flexShrink:0}}>−</button>
+            <div style={{flex:1,textAlign:'center'}}>
+              <div style={{fontSize:30,fontWeight:900,color:seed>0?GREEN:MUTED,fontVariantNumeric:'tabular-nums'}}>{seed}</div>
+              <div style={{fontSize:10,color:MUTED,marginTop:1}}>days added to streak</div>
+            </div>
+            <button onClick={()=>setSeed(s=>s+1)} style={{width:40,height:40,borderRadius:8,border:`1px solid ${BORDER}`,background:'#1a1a1a',color:TEXT,cursor:'pointer',fontSize:20,fontFamily:'inherit',flexShrink:0}}>+</button>
+          </div>
+          <div style={{fontSize:11,color:MUTED,lineHeight:1.5}}>Set this if you've been doing this habit before tracking here. Adds to your streak count.</div>
+        </FormInput>
+        <button onClick={save} style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:habit.color||GREEN,color:'#000',fontWeight:900,fontSize:15,fontFamily:'inherit',cursor:'pointer',marginTop:4}}>Save Changes</button>
+      </div>
+    </div>
+  </div>);
+}
 
 function EditHabitSheet({habit,onClose,onSave,onDelete}){
   const [name,setName]=useState(habit.name||'');
@@ -686,6 +869,7 @@ function HabitsSection({user}){
   const [newColor,setNewColor]=useState(HABIT_COLORS[0]);
   const [newTime,setNewTime]=useState('');
   const [saving,setSaving]=useState(false);
+  const [detailHabit,setDetailHabit]=useState(null);
   const dates=useMemo(()=>getLast7Dates(),[]);
   const today=dates[6];
 
@@ -771,7 +955,7 @@ function HabitsSection({user}){
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
     {/* Header */}
-    <div style={{padding:'12px 16px 10px',borderBottom:`1px solid ${BORDER}`,display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+    <div className="section-header">
       <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:GREEN}}>✓</span> HABITS</span></div>
       {habits.length>0&&(
         <button onClick={()=>setHideCompleted(v=>!v)} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:7,padding:'4px 10px',cursor:'pointer',fontSize:11,color:hideCompleted?LIME:MUTED,fontFamily:'inherit',fontWeight:600,whiteSpace:'nowrap'}}>
@@ -807,8 +991,8 @@ function HabitsSection({user}){
             <button onClick={()=>moveHabit(habit,-1)} disabled={idx===0} style={{background:'none',border:'none',color:idx===0?'#1e1e1e':MUTED,cursor:idx===0?'default':'pointer',fontSize:9,padding:'2px 3px',lineHeight:1,display:'block'}}>▲</button>
             <button onClick={()=>moveHabit(habit,1)} disabled={idx===displayHabits.length-1} style={{background:'none',border:'none',color:idx===displayHabits.length-1?'#1e1e1e':MUTED,cursor:idx===displayHabits.length-1?'default':'pointer',fontSize:9,padding:'2px 3px',lineHeight:1,display:'block'}}>▼</button>
           </div>
-          {/* Name — click to open edit */}
-          <div onClick={()=>setEditHabit(habit)} style={{flex:1,minWidth:0,cursor:'pointer',paddingTop:7,paddingBottom:7}}>
+          {/* Name — click to open full detail */}
+          <div onClick={()=>setDetailHabit(habit)} style={{flex:1,minWidth:0,cursor:'pointer',paddingTop:7,paddingBottom:7}}>
             <div style={{display:'flex',alignItems:'center',gap:6}}>
               <div style={{width:7,height:7,borderRadius:'50%',background:col,flexShrink:0}}/>
               <div style={{overflow:'hidden',flex:1}}>
@@ -853,8 +1037,10 @@ function HabitsSection({user}){
       </BtnRow>
     </Sheet>)}
 
-    {/* Edit sheet */}
+    {/* Edit sheet (still used from DotMenu) */}
     {editHabit&&(<EditHabitSheet habit={editHabit} onClose={()=>setEditHabit(null)} onSave={updateHabit} onDelete={deleteHabit}/>)}
+    {/* Full detail screen */}
+    {detailHabit&&(<HabitDetailScreen habit={detailHabit} user={user} onClose={()=>{setDetailHabit(null);load();}} onSave={async(id,patch)=>{await updateHabit(id,patch);setDetailHabit(null);}} onDelete={async id=>{await deleteHabit(id);setDetailHabit(null);}}/>)}
   </div>);
 }
 
@@ -866,12 +1052,14 @@ const CD_RECURRINGS=[{key:null,label:'One-time'},{key:'weekly',label:'📅 Weekl
 function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
   const [name,setName]=useState(item?.name||'');
   const [date,setDate]=useState(item?.target_date||'');
+  const [firstDate,setFirstDate]=useState(item?.first_date||'');
   const [cat,setCat]=useState(item?.category||'countdown');
   const [recurring,setRecur]=useState(item?.recurring||null);
   const [direction,setDirection]=useState(item?.direction||defaultDirection||'countdown');
   const [saving,setSaving]=useState(false);
   const isCountUp=direction==='countup';
-  const save=async()=>{if(!name.trim()||!date)return;setSaving(true);await onSave({name:name.trim(),target_date:date,category:cat,recurring,direction});setSaving(false);};
+  const habit_col=CD_COLORS[cat]||BLUE;
+  const save=async()=>{if(!name.trim()||!date)return;setSaving(true);await onSave({name:name.trim(),target_date:date,first_date:firstDate||null,category:cat,recurring,direction});setSaving(false);};
   return(<Sheet onClose={onClose} title={item?(isCountUp?'Edit Count-Up':'Edit Countdown'):(isCountUp?'New Count-Up':'New Countdown')}>
     <FormInput label="Type">
       <div style={{display:'flex',gap:8}}>
@@ -881,6 +1069,11 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
     <FormInput label="Name"><input value={name} onChange={e=>setName(e.target.value)} placeholder={isCountUp?'What happened / started?':'What are you counting down to?'} style={inp()} autoFocus/></FormInput>
     <FormInput label={isCountUp?'Date it started / happened':'Date'}>
       <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp()}/>
+    </FormInput>
+    <FormInput label="Original year (for age/years display)" style={{opacity:0.85}}>
+      <input type="date" value={firstDate} onChange={e=>setFirstDate(e.target.value)} style={{...inp(),color:firstDate?TEXT:MUTED}} placeholder="e.g. 1988-03-17"/>
+      <div style={{fontSize:11,color:MUTED,marginTop:5}}>For birthdays/anniversaries — shows how many years. Leave blank to skip.</div>
+      {firstDate&&yearsFrom(firstDate)!==null&&<div style={{fontSize:13,color:habit_col||BLUE,marginTop:5,fontWeight:700}}>→ {yearsFrom(firstDate)} years old / {yearsFrom(firstDate)} yrs</div>}
     </FormInput>
     {!isCountUp&&(<>
       <FormInput label="Category">
@@ -913,9 +1106,9 @@ function CountdownSection({user}){
   },[user.id]);
   useEffect(()=>{load();},[load]);
 
-  const handleSave=async({name,target_date,category,recurring,direction})=>{
-    if(sheet?.id){await db.from('countdowns').update({name,target_date,category,recurring,direction}).eq('id',sheet.id);}
-    else{await db.from('countdowns').insert({user_id:user.id,name,target_date,category,recurring,direction:direction||'countdown'});}
+  const handleSave=async({name,target_date,first_date,category,recurring,direction})=>{
+    if(sheet?.id){await db.from('countdowns').update({name,target_date,first_date:first_date||null,category,recurring,direction}).eq('id',sheet.id);}
+    else{await db.from('countdowns').insert({user_id:user.id,name,target_date,first_date:first_date||null,category,recurring,direction:direction||'countdown'});}
     setSheet(null);load();
   };
   const handleDelete=async id=>{await db.from('countdowns').delete().eq('id',id);setSheet(null);load();};
@@ -942,7 +1135,7 @@ function CountdownSection({user}){
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
     {/* Header */}
-    <div style={{padding:'12px 16px 0',display:'flex',alignItems:'center',flexShrink:0}}>
+    <div className="section-header">
       <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:BLUE}}>⏳</span> COUNTDOWN</span></div>
       <button onClick={()=>setSheet('new')} style={{background:BLUE,border:'none',borderRadius:8,padding:'5px 14px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
@@ -983,7 +1176,8 @@ function CountdownSection({user}){
           <div style={{textAlign:'right',flexShrink:0}}>
             {isToday&&!isCountUp?<div style={{color:'#f7c94f',fontWeight:700,fontSize:18}}>Today</div>:<>
               <div style={{fontSize:32,fontWeight:700,lineHeight:1,fontFamily:'monospace',color:isPast?MUTED:color}}>{daysVal}</div>
-              <div style={{fontSize:10,color:MUTED,textTransform:'uppercase',letterSpacing:'0.05em',marginTop:2,fontWeight:500}}>{isCountUp?'Days Since':isPast?'Days Ago':'Days Left'}</div>
+              <div style={{fontSize:10,color:MUTED,textTransform:'uppercase',letterSpacing:'0.05em',marginTop:2,fontWeight:500}}>{isCountUp?'Days Since':isPast?'Days Ago':'Days Until'}</div>
+              {item.first_date&&yearsFrom(item.first_date)!==null&&<div style={{fontSize:11,color:color,fontWeight:700,marginTop:3}}>{yearsFrom(item.first_date)} yrs</div>}
             </>}
           </div>
         </div>);
@@ -1042,7 +1236,7 @@ function FreqSection({user}){
   const rdelta=rfd!==null&&rsd!==null?rfd-rsd:null;
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
-    <div style={{padding:'12px 16px 0',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+    <div className="section-header">
       <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:ORANGE}}>🔁</span> FREQ</span></div>
       <span style={{fontSize:11,color:MUTED}}>{rows.length} task{rows.length!==1?'s':''}</span>
       <button onClick={()=>setAddOpen(true)} style={{background:ORANGE,border:'none',borderRadius:8,padding:'5px 13px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>

@@ -45,7 +45,7 @@ const {useState,useEffect,useRef,useCallback,useMemo}=React;
 // ═══════════════════════════════════════════════════════════════════
 // SHARED CONSTANTS
 // ═══════════════════════════════════════════════════════════════════
-const LIME="#CAFF4C",BORDER="#2a2a2a",TEXT="#e8e8e8",MUTED="#555";
+const LIME="#CAFF4C",BORDER="#2a2a2a",TEXT="#e8e8e8",MUTED="#777";
 const RED="#FF453A",ORANGE="#FF9F0A",GREEN="#30D158",BLUE="#4f8ef7";
 const CARD="#111",CARD2="#161616",INSET="#0a0a0a";
 const NAV_H=58;
@@ -635,18 +635,63 @@ function dayLabel(dateStr){
 }
 function dayNum(dateStr){return new Date(dateStr+'T00:00:00').getDate();}
 
+function EditHabitSheet({habit,onClose,onSave,onDelete}){
+  const [name,setName]=useState(habit.name||'');
+  const [time,setTime]=useState(habit.scheduled_time||'');
+  const [seed,setSeed]=useState(habit.streak_seed||0);
+  const [color,setColor]=useState(habit.color||HABIT_COLORS[0]);
+  const save=()=>{if(!name.trim())return;onSave(habit.id,{name:name.trim(),scheduled_time:time||null,streak_seed:seed,color});};
+  return(<Sheet onClose={onClose} title="Edit Habit">
+    <FormInput label="Name"><input value={name} onChange={e=>setName(e.target.value)} style={inp()} autoFocus/></FormInput>
+    <FormInput label="Time (optional)">
+      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...inp(),flex:1,color:time?ORANGE:MUTED}}/>
+        {time&&<button onClick={()=>setTime('')} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:8,padding:'10px 12px',color:MUTED,cursor:'pointer',fontSize:12,fontFamily:'inherit',flexShrink:0}}>Clear</button>}
+      </div>
+      {time&&<div style={{fontSize:11,color:ORANGE,marginTop:5,fontWeight:700}}>⏰ {fmtTime12(time)}</div>}
+    </FormInput>
+    <FormInput label="Color">
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        {HABIT_COLORS.map(c=>(<button key={c} onClick={()=>setColor(c)} style={{width:28,height:28,borderRadius:'50%',background:c,border:'none',cursor:'pointer',outline:color===c?'2px solid #fff':'none',outlineOffset:2}}/>))}
+      </div>
+    </FormInput>
+    <FormInput label="Streak Seed — days before app tracking">
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
+        <button onClick={()=>setSeed(s=>Math.max(0,s-1))} style={{width:40,height:40,borderRadius:8,border:`1px solid ${BORDER}`,background:'#1a1a1a',color:TEXT,cursor:'pointer',fontSize:20,fontFamily:'inherit',flexShrink:0}}>−</button>
+        <div style={{flex:1,textAlign:'center'}}>
+          <div style={{fontSize:30,fontWeight:900,color:seed>0?GREEN:MUTED,fontVariantNumeric:'tabular-nums'}}>{seed}</div>
+          <div style={{fontSize:10,color:MUTED,marginTop:1}}>days added to streak</div>
+        </div>
+        <button onClick={()=>setSeed(s=>s+1)} style={{width:40,height:40,borderRadius:8,border:`1px solid ${BORDER}`,background:'#1a1a1a',color:TEXT,cursor:'pointer',fontSize:20,fontFamily:'inherit',flexShrink:0}}>+</button>
+      </div>
+      <div style={{fontSize:11,color:MUTED,lineHeight:1.5}}>Set this if you've been doing this habit before tracking here. It adds to your calculated streak count.</div>
+    </FormInput>
+    <BtnRow>
+      <button onClick={()=>onDelete(habit.id)} style={{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.2)',borderRadius:12,color:'#ef4444',fontSize:14,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>Delete</button>
+      <BtnGhost onClick={onClose}>Cancel</BtnGhost>
+      <BtnPrimary color={GREEN} onClick={save}>Save</BtnPrimary>
+    </BtnRow>
+  </Sheet>);
+}
+
 function HabitsSection({user}){
-  const [habits,setHabits]=useState([]);const [logs,setLogs]=useState({});// {habitId_date: value}
-  const [loading,setLoading]=useState(true);const [showAdd,setShowAdd]=useState(false);
+  const [habits,setHabits]=useState([]);
+  const [logs,setLogs]=useState({});
+  const [loading,setLoading]=useState(true);
+  const [showAdd,setShowAdd]=useState(false);
   const [editHabit,setEditHabit]=useState(null);
-  const [newName,setNewName]=useState('');const [newType,setNewType]=useState('bool');const [newColor,setNewColor]=useState(HABIT_COLORS[0]);
+  const [hideCompleted,setHideCompleted]=useState(false);
+  const [newName,setNewName]=useState('');
+  const [newType,setNewType]=useState('bool');
+  const [newColor,setNewColor]=useState(HABIT_COLORS[0]);
+  const [newTime,setNewTime]=useState('');
   const [saving,setSaving]=useState(false);
   const dates=useMemo(()=>getLast7Dates(),[]);
   const today=dates[6];
 
   const load=useCallback(async()=>{
     const[{data:h},{data:l}]=await Promise.all([
-      db.from('habits').select('*').eq('user_id',user.id).order('created_at'),
+      db.from('habits').select('*').eq('user_id',user.id).order('sort_order',{ascending:true}).order('created_at',{ascending:true}),
       db.from('habit_logs').select('*').eq('user_id',user.id).gte('log_date',dates[0]).lte('log_date',today)
     ]);
     setHabits(h||[]);
@@ -656,33 +701,51 @@ function HabitsSection({user}){
 
   useEffect(()=>{load();},[load]);
 
-  const toggleCell=async(habit,date)=>{
+  // Cycle: bool: null→1(done)→-1(skip)→null | count: null→1...9→null
+  const toggleCell=async(e,habit,date)=>{
+    e.stopPropagation();
     const key=`${habit.id}_${date}`;
     const cur=logs[key]??null;
     let next=null;
-    if(habit.type==='bool'){if(cur===null)next=1;else if(cur===1)next=0;else next=null;}
+    if(habit.type==='bool'){if(cur===null)next=1;else if(cur===1)next=-1;else next=null;}
     else{next=(cur||0)+1;if(next>9)next=null;}
     setLogs(l=>{const nl={...l};if(next===null)delete nl[key];else nl[key]=next;return nl;});
     if(next===null){await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);}
     else{await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});}
   };
 
+  // Streak: consecutive days where val===1, val===-1, or val>0 (count). Skip (-1) doesn't break streak.
   const getStreak=useCallback(habit=>{
     let streak=0;
     for(let i=0;i<365;i++){
       const d=new Date();d.setDate(d.getDate()-i);const ds=d.toISOString().split('T')[0];
       const val=logs[`${habit.id}_${ds}`]??null;
-      if(habit.type==='bool'&&val===1)streak++;
-      else if(habit.type==='count'&&val>0)streak++;
+      const tracked=habit.type==='bool'?(val===1||val===-1):(val!==null&&val>0);
+      if(tracked)streak++;
       else if(i===0)continue;
       else break;
-    }return streak;
+    }
+    return streak+(habit.streak_seed||0);
   },[logs]);
+
+  const isDoneToday=useCallback(habit=>{
+    const val=logs[`${habit.id}_${today}`]??null;
+    return habit.type==='bool'?(val===1||val===-1):(val!==null&&val>0);
+  },[logs,today]);
+
+  const moveHabit=async(habit,dir)=>{
+    const idx=habits.findIndex(h=>h.id===habit.id);
+    const newIdx=idx+dir;
+    if(newIdx<0||newIdx>=habits.length)return;
+    const arr=[...habits];[arr[idx],arr[newIdx]]=[arr[newIdx],arr[idx]];
+    setHabits(arr);
+    await Promise.all(arr.map((h,i)=>db.from('habits').update({sort_order:i}).eq('id',h.id)));
+  };
 
   const addHabit=async()=>{
     if(!newName.trim())return;setSaving(true);
-    await db.from('habits').insert({user_id:user.id,name:newName.trim(),color:newColor,type:newType});
-    setNewName('');setNewType('bool');setNewColor(HABIT_COLORS[0]);setSaving(false);setShowAdd(false);load();
+    await db.from('habits').insert({user_id:user.id,name:newName.trim(),color:newColor,type:newType,scheduled_time:newTime||null,sort_order:habits.length,streak_seed:0});
+    setNewName('');setNewType('bool');setNewColor(HABIT_COLORS[0]);setNewTime('');setSaving(false);setShowAdd(false);load();
   };
   const deleteHabit=async id=>{if(!window.confirm('Delete habit and all its history?'))return;await db.from('habits').delete().eq('id',id);load();setEditHabit(null);};
   const updateHabit=async(id,patch)=>{await db.from('habits').update(patch).eq('id',id);load();setEditHabit(null);};
@@ -692,85 +755,106 @@ function HabitsSection({user}){
     const isToday=date===today;
     const col=habit.color||BLUE;
     if(habit.type==='bool'){
-      let icon='—',color='#2a2a2a',bg='transparent';
-      if(val===1){icon='✓';color=col;bg=col+'22';}
-      else if(val===0){icon='✕';color='#444';bg='transparent';}
-      return(<button key={date} onClick={()=>toggleCell(habit,date)} style={{width:36,height:36,background:bg,border:isToday?`1px solid #333`:'none',borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color,fontSize:val===1?16:12,fontWeight:700,transition:'all .1s',flexShrink:0}}>{icon}</button>);
+      let icon='·',color='#2a2a2a',bg='transparent';
+      if(val===1){icon='✓';color=col;bg=col+'20';}
+      else if(val===-1){icon='—';color='#666';bg='transparent';}
+      return(<button key={date} onClick={e=>toggleCell(e,habit,date)} style={{width:34,height:40,background:bg,border:isToday?`1px solid #333`:'none',borderRadius:7,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color,fontSize:val===1?16:14,fontWeight:700,flexShrink:0,transition:'all .1s'}}>{icon}</button>);
     }else{
-      return(<button key={date} onClick={()=>toggleCell(habit,date)} style={{width:36,height:44,background:'transparent',border:isToday?`1px solid #333`:'none',borderRadius:8,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,flexShrink:0}}>
-        <span style={{color:val>0?habit.color:'#2a2a2a',fontWeight:700,fontSize:14,lineHeight:1}}>{val>0?val:'—'}</span>
-        <span style={{color:'#333',fontSize:8}}>tap</span>
+      return(<button key={date} onClick={e=>toggleCell(e,habit,date)} style={{width:34,height:40,background:'transparent',border:isToday?`1px solid #333`:'none',borderRadius:7,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+        <span style={{color:val>0?col:'#2a2a2a',fontWeight:700,fontSize:14}}>{val>0?val:'·'}</span>
       </button>);
     }
   };
 
+  const completedCount=habits.filter(h=>isDoneToday(h)).length;
+  const displayHabits=hideCompleted?habits.filter(h=>!isDoneToday(h)):habits;
+
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
+    {/* Header */}
     <div style={{padding:'12px 16px 10px',borderBottom:`1px solid ${BORDER}`,display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
       <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:GREEN}}>✓</span> HABITS</span></div>
-      <button onClick={()=>setShowAdd(true)} style={{background:GREEN,border:'none',borderRadius:8,padding:'5px 13px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
+      {habits.length>0&&(
+        <button onClick={()=>setHideCompleted(v=>!v)} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:7,padding:'4px 10px',cursor:'pointer',fontSize:11,color:hideCompleted?LIME:MUTED,fontFamily:'inherit',fontWeight:600,whiteSpace:'nowrap'}}>
+          {hideCompleted?`All (${completedCount} done)`:`${completedCount}/${habits.length} ✓`}
+        </button>
+      )}
+      <button onClick={()=>setShowAdd(true)} style={{background:GREEN,border:'none',borderRadius:8,padding:'5px 14px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
 
     {/* Day headers */}
-    <div style={{padding:'8px 16px 4px',flexShrink:0,overflowX:'auto'}}>
-      <div style={{minWidth:460,display:'grid',gridTemplateColumns:'160px repeat(7, 36px)',gap:'0 4px',alignItems:'center',marginBottom:4}}>
-        <div/>
-        {dates.map(d=>(<div key={d} style={{textAlign:'center'}}>
-          <div style={{fontSize:9,color:'#444',letterSpacing:'0.06em',marginBottom:1}}>{dayLabel(d)}</div>
-          <div style={{fontSize:12,fontWeight:d===today?700:400,color:d===today?TEXT:'#3a3a3a',background:d===today?'#1a1a1a':'none',borderRadius:6,width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{dayNum(d)}</div>
+    <div style={{padding:'6px 16px 0',flexShrink:0}}>
+      <div style={{display:'flex',alignItems:'flex-end',gap:2}}>
+        <div style={{flex:1,minWidth:0}}/>
+        <div style={{width:22,flexShrink:0}}/>
+        {dates.map(d=>(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
+          <div style={{fontSize:9,color:'#555',letterSpacing:'0.04em',marginBottom:2}}>{dayLabel(d)}</div>
+          <div style={{fontSize:12,fontWeight:d===today?700:400,color:d===today?TEXT:'#3a3a3a',background:d===today?'#1a1a1a':'none',borderRadius:6,width:28,height:26,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{dayNum(d)}</div>
         </div>))}
       </div>
     </div>
 
-    <div style={{flex:1,overflowY:'auto',padding:'0 16px',paddingBottom:NAV_H+12}}>
-      <div style={{minWidth:460}}>
-        {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:40}}><Spinner size={22} color={GREEN}/></div>}
-        {!loading&&habits.length===0&&(<div style={{textAlign:'center',padding:'60px 0',color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>✓</div><div style={{fontSize:14,fontWeight:700,marginBottom:6}}>No habits yet</div><div style={{fontSize:12}}>Tap + to add your first habit</div></div>)}
-        {habits.map(habit=>{
-          const streak=getStreak(habit);
-          return(<div key={habit.id} style={{display:'grid',gridTemplateColumns:'160px repeat(7, 36px)',gap:'0 4px',alignItems:'center',borderTop:`1px solid #0e0e0e`,padding:'2px 0',cursor:'pointer'}} onClick={()=>setEditHabit(habit)}>
-            <div style={{display:'flex',alignItems:'center',gap:7,paddingRight:8,paddingTop:4,paddingBottom:4}}>
-              <div style={{width:6,height:6,borderRadius:'50%',background:habit.color||BLUE,flexShrink:0}}/>
+    <div style={{flex:1,overflowY:'auto',paddingBottom:NAV_H+12}}>
+      {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:40}}><Spinner size={22} color={GREEN}/></div>}
+      {!loading&&habits.length===0&&(<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>✓</div><div style={{fontSize:15,fontWeight:700,marginBottom:6}}>No habits yet</div><div style={{fontSize:13}}>Tap + to add your first habit</div></div>)}
+
+      {displayHabits.map((habit,idx)=>{
+        const streak=getStreak(habit);
+        const done=isDoneToday(habit);
+        const col=habit.color||BLUE;
+        return(<div key={habit.id} style={{display:'flex',alignItems:'center',gap:2,padding:'0 16px',borderBottom:`1px solid #0d0d0d`}}>
+          {/* Order arrows */}
+          <div style={{display:'flex',flexDirection:'column',gap:0,flexShrink:0,width:18,marginRight:4}}>
+            <button onClick={()=>moveHabit(habit,-1)} disabled={idx===0} style={{background:'none',border:'none',color:idx===0?'#1e1e1e':MUTED,cursor:idx===0?'default':'pointer',fontSize:9,padding:'2px 3px',lineHeight:1,display:'block'}}>▲</button>
+            <button onClick={()=>moveHabit(habit,1)} disabled={idx===displayHabits.length-1} style={{background:'none',border:'none',color:idx===displayHabits.length-1?'#1e1e1e':MUTED,cursor:idx===displayHabits.length-1?'default':'pointer',fontSize:9,padding:'2px 3px',lineHeight:1,display:'block'}}>▼</button>
+          </div>
+          {/* Name — click to open edit */}
+          <div onClick={()=>setEditHabit(habit)} style={{flex:1,minWidth:0,cursor:'pointer',paddingTop:7,paddingBottom:7}}>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <div style={{width:7,height:7,borderRadius:'50%',background:col,flexShrink:0}}/>
               <div style={{overflow:'hidden',flex:1}}>
-                <div style={{fontSize:13,color:habit.color||BLUE,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{habit.name}</div>
-                {streak>0&&<div style={{fontSize:9,color:MUTED,marginTop:1}}>🔥 {streak}d</div>}
+                <div style={{fontSize:14,fontWeight:500,color:done?'#444':col,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',textDecoration:done?'line-through':'none'}}>{habit.name}</div>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginTop:2}}>
+                  {streak>0&&<span style={{fontSize:10,color:MUTED,fontWeight:600}}>🔥 {streak}d</span>}
+                  {habit.scheduled_time&&<span style={{fontSize:10,color:'#555'}}>⏰ {fmtTime12(habit.scheduled_time)}</span>}
+                </div>
               </div>
             </div>
-            {dates.map(d=>renderCell(habit,d))}
-          </div>);
-        })}
-      </div>
+          </div>
+          {/* Cells — click to toggle only */}
+          {dates.map(d=>renderCell(habit,d))}
+        </div>);
+      })}
+
+      {hideCompleted&&completedCount>0&&(<div style={{textAlign:'center',padding:'16px',fontSize:12,color:'#444'}}>
+        {completedCount} completed habit{completedCount!==1?'s':''} hidden
+      </div>)}
     </div>
 
-    {/* Add habit sheet */}
+    {/* Add sheet */}
     {showAdd&&(<Sheet onClose={()=>setShowAdd(false)} title="New Habit">
       <FormInput label="Name"><input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="What do you want to track?" style={inp()} autoFocus/></FormInput>
       <FormInput label="Type">
         <div style={{display:'flex',gap:8}}>
-          {[['bool','✓ Checkbox'],['count','# Counter']].map(([t,l])=>(<button key={t} onClick={()=>setNewType(t)} style={{flex:1,padding:'10px',borderRadius:10,cursor:'pointer',background:newType===t?'#1a2535':'#1a1a1a',border:`1px solid ${newType===t?BLUE:'#2a2a2a'}`,color:newType===t?TEXT:MUTED,fontSize:13,fontWeight:500,fontFamily:'inherit'}}>{l}</button>))}
+          {[['bool','✓ Checkbox'],['count','# Counter']].map(([t,l])=>(<button key={t} onClick={()=>setNewType(t)} style={{flex:1,padding:'10px',borderRadius:10,cursor:'pointer',background:newType===t?'#0e1f10':'#1a1a1a',border:`1px solid ${newType===t?GREEN:'#2a2a2a'}`,color:newType===t?TEXT:MUTED,fontSize:13,fontFamily:'inherit',fontWeight:500}}>{l}</button>))}
         </div>
+      </FormInput>
+      <FormInput label="Time (optional)">
+        <input type="time" value={newTime} onChange={e=>setNewTime(e.target.value)} style={{...inp(),color:newTime?ORANGE:MUTED}}/>
+        {newTime&&<div style={{fontSize:11,color:ORANGE,marginTop:5,fontWeight:700}}>⏰ {fmtTime12(newTime)}</div>}
       </FormInput>
       <FormInput label="Color">
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           {HABIT_COLORS.map(c=>(<button key={c} onClick={()=>setNewColor(c)} style={{width:28,height:28,borderRadius:'50%',background:c,border:'none',cursor:'pointer',outline:newColor===c?'2px solid #fff':'none',outlineOffset:2}}/>))}
         </div>
       </FormInput>
-      <BtnRow><BtnGhost onClick={()=>setShowAdd(false)}>Cancel</BtnGhost><BtnPrimary onClick={addHabit} disabled={saving||!newName.trim()} color={GREEN}>{saving?'Adding…':'Add Habit'}</BtnPrimary></BtnRow>
-    </Sheet>)}
-
-    {/* Edit habit sheet */}
-    {editHabit&&(<Sheet onClose={()=>setEditHabit(null)} title="Edit Habit">
-      <FormInput label="Name"><input defaultValue={editHabit.name} id="editHabitName" style={inp()} autoFocus/></FormInput>
-      <FormInput label="Color">
-        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          {HABIT_COLORS.map(c=>(<button key={c} onClick={()=>{}}  id={`hc_${c}`} style={{width:28,height:28,borderRadius:'50%',background:c,border:'none',cursor:'pointer',outline:c===editHabit.color?'2px solid #fff':'none',outlineOffset:2}}/>))}
-        </div>
-      </FormInput>
       <BtnRow>
-        <button onClick={()=>deleteHabit(editHabit.id)} style={{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.2)',borderRadius:12,color:'#ef4444',fontWeight:500,fontSize:14,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>Delete</button>
-        <BtnGhost onClick={()=>setEditHabit(null)}>Cancel</BtnGhost>
-        <BtnPrimary color={GREEN} onClick={()=>{const name=document.getElementById('editHabitName')?.value?.trim();if(name)updateHabit(editHabit.id,{name});}}>Save</BtnPrimary>
+        <BtnGhost onClick={()=>setShowAdd(false)}>Cancel</BtnGhost>
+        <BtnPrimary onClick={addHabit} disabled={saving||!newName.trim()} color={GREEN}>{saving?'Adding…':'Add Habit'}</BtnPrimary>
       </BtnRow>
     </Sheet>)}
+
+    {/* Edit sheet */}
+    {editHabit&&(<EditHabitSheet habit={editHabit} onClose={()=>setEditHabit(null)} onSave={updateHabit} onDelete={deleteHabit}/>)}
   </div>);
 }
 
@@ -779,24 +863,37 @@ function HabitsSection({user}){
 // ═══════════════════════════════════════════════════════════════════
 const CD_RECURRINGS=[{key:null,label:'One-time'},{key:'weekly',label:'📅 Weekly'},{key:'monthly',label:'🗓 Monthly'},{key:'yearly',label:'🔁 Yearly'}];
 
-function CDEventSheet({item,onClose,onSave,onDelete}){
-  const [name,setName]=useState(item?.name||'');const [date,setDate]=useState(item?.target_date||'');
-  const [cat,setCat]=useState(item?.category||'countdown');const [recurring,setRecur]=useState(item?.recurring||null);
+function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
+  const [name,setName]=useState(item?.name||'');
+  const [date,setDate]=useState(item?.target_date||'');
+  const [cat,setCat]=useState(item?.category||'countdown');
+  const [recurring,setRecur]=useState(item?.recurring||null);
+  const [direction,setDirection]=useState(item?.direction||defaultDirection||'countdown');
   const [saving,setSaving]=useState(false);
-  const save=async()=>{if(!name.trim()||!date)return;setSaving(true);await onSave({name:name.trim(),target_date:date,category:cat,recurring});setSaving(false);};
-  return(<Sheet onClose={onClose} title={item?'Edit Event':'New Countdown'}>
-    <FormInput label="Name"><input value={name} onChange={e=>setName(e.target.value)} placeholder="What are you counting down to?" style={inp()} autoFocus/></FormInput>
-    <FormInput label="Date"><input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp()}/></FormInput>
-    <FormInput label="Category">
-      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-        {CD_CATS.map(c=>(<button key={c.key} onClick={()=>setCat(c.key)} style={{background:cat===c.key?'#1a2535':'#1a1a1a',border:`1px solid ${cat===c.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'8px 14px',fontSize:13,color:cat===c.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6}}>{c.emoji} {c.label}</button>))}
+  const isCountUp=direction==='countup';
+  const save=async()=>{if(!name.trim()||!date)return;setSaving(true);await onSave({name:name.trim(),target_date:date,category:cat,recurring,direction});setSaving(false);};
+  return(<Sheet onClose={onClose} title={item?(isCountUp?'Edit Count-Up':'Edit Countdown'):(isCountUp?'New Count-Up':'New Countdown')}>
+    <FormInput label="Type">
+      <div style={{display:'flex',gap:8}}>
+        {[['countdown','⏳ Countdown'],['countup','⏱ Count-Up']].map(([d,l])=>(<button key={d} onClick={()=>setDirection(d)} style={{flex:1,padding:'9px',borderRadius:10,cursor:'pointer',background:direction===d?'#1a2535':'#1a1a1a',border:`1px solid ${direction===d?BLUE:'#2a2a2a'}`,color:direction===d?TEXT:MUTED,fontSize:12,fontFamily:'inherit',fontWeight:direction===d?600:400}}>{l}</button>))}
       </div>
     </FormInput>
-    <FormInput label="Recurring">
-      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-        {CD_RECURRINGS.map(r=>(<button key={String(r.key)} onClick={()=>setRecur(r.key)} style={{background:recurring===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${recurring===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:recurring===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
-      </div>
+    <FormInput label="Name"><input value={name} onChange={e=>setName(e.target.value)} placeholder={isCountUp?'What happened / started?':'What are you counting down to?'} style={inp()} autoFocus/></FormInput>
+    <FormInput label={isCountUp?'Date it started / happened':'Date'}>
+      <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp()}/>
     </FormInput>
+    {!isCountUp&&(<>
+      <FormInput label="Category">
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {CD_CATS.map(c=>(<button key={c.key} onClick={()=>setCat(c.key)} style={{background:cat===c.key?'#1a2535':'#1a1a1a',border:`1px solid ${cat===c.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'8px 14px',fontSize:13,color:cat===c.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6}}>{c.emoji} {c.label}</button>))}
+        </div>
+      </FormInput>
+      <FormInput label="Recurring">
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {CD_RECURRINGS.map(r=>(<button key={String(r.key)} onClick={()=>setRecur(r.key)} style={{background:recurring===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${recurring===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:recurring===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
+        </div>
+      </FormInput>
+    </>)}
     <BtnRow>
       {item&&<button onClick={()=>onDelete(item.id)} style={{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.2)',borderRadius:12,color:'#ef4444',fontSize:14,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>Delete</button>}
       <BtnGhost onClick={onClose}>Cancel</BtnGhost>
@@ -816,62 +913,84 @@ function CountdownSection({user}){
   },[user.id]);
   useEffect(()=>{load();},[load]);
 
-  const handleSave=async({name,target_date,category,recurring})=>{
-    if(sheet?.id){await db.from('countdowns').update({name,target_date,category,recurring}).eq('id',sheet.id);}
-    else{await db.from('countdowns').insert({user_id:user.id,name,target_date,category,recurring});}
+  const handleSave=async({name,target_date,category,recurring,direction})=>{
+    if(sheet?.id){await db.from('countdowns').update({name,target_date,category,recurring,direction}).eq('id',sheet.id);}
+    else{await db.from('countdowns').insert({user_id:user.id,name,target_date,category,recurring,direction:direction||'countdown'});}
     setSheet(null);load();
   };
   const handleDelete=async id=>{await db.from('countdowns').delete().eq('id',id);setSheet(null);load();};
 
-  const enriched=items.map(item=>{const effectiveDate=item.recurring?nextOccurrence(item.target_date,item.recurring):item.target_date;const days=daysUntil(effectiveDate);return{...item,_days:days,_effectiveDate:effectiveDate};});
-  const upcoming=enriched.filter(i=>i._days>=0).sort((a,b)=>a._days-b._days);
-  const past=enriched.filter(i=>i._days<0).sort((a,b)=>b._days-a._days);
-  const displayList=(mainTab==='upcoming'?upcoming:past).filter(i=>catFilter==='all'||i.category===catFilter);
+  const enriched=items.map(item=>{
+    const effectiveDate=item.recurring?nextOccurrence(item.target_date,item.recurring):item.target_date;
+    const days=daysUntil(effectiveDate);
+    return{...item,_days:days,_effectiveDate:effectiveDate};
+  });
+
+  // Split by direction
+  const cdItems=enriched.filter(i=>i.direction!=='countup');
+  const cuItems=enriched.filter(i=>i.direction==='countup');
+  const upcoming=cdItems.filter(i=>i._days>=0).sort((a,b)=>a._days-b._days);
+  const past=cdItems.filter(i=>i._days<0).sort((a,b)=>b._days-a._days);
+  // Count-up: items in past, show days since. Sort most days first.
+  const countup=[...cuItems].map(i=>({...i,_since:Math.abs(i._days)})).sort((a,b)=>b._since-a._since);
+
+  const displayList=mainTab==='countup'
+    ?countup
+    :(mainTab==='upcoming'?upcoming:past).filter(i=>catFilter==='all'||i.category===catFilter);
+
+  const tabCounts={upcoming:upcoming.length,past:past.length,countup:countup.length};
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
+    {/* Header */}
     <div style={{padding:'12px 16px 0',display:'flex',alignItems:'center',flexShrink:0}}>
       <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:BLUE}}>⏳</span> COUNTDOWN</span></div>
+      <button onClick={()=>setSheet('new')} style={{background:BLUE,border:'none',borderRadius:8,padding:'5px 14px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
 
     {/* Main tabs */}
     <div style={{display:'flex',borderBottom:`1px solid ${BORDER}`,flexShrink:0,padding:'0 16px'}}>
-      {[['upcoming',`Upcoming (${upcoming.length})`],['past',`Past (${past.length})`]].map(([k,l])=>(<button key={k} onClick={()=>setMainTab(k)} style={{background:'none',border:'none',color:mainTab===k?TEXT:MUTED,fontSize:13,fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',cursor:'pointer',padding:'10px 0',marginRight:22,borderBottom:`2px solid ${mainTab===k?BLUE:'transparent'}`,fontFamily:'inherit'}}>{l}</button>))}
+      {[['upcoming','Upcoming'],['past','Past'],['countup','Count Up']].map(([k,l])=>(<button key={k} onClick={()=>setMainTab(k)} style={{background:'none',border:'none',color:mainTab===k?TEXT:MUTED,fontSize:12,fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',cursor:'pointer',padding:'10px 0',marginRight:18,borderBottom:`2px solid ${mainTab===k?BLUE:'transparent'}`,fontFamily:'inherit',whiteSpace:'nowrap'}}>{l}{tabCounts[k]>0?` (${tabCounts[k]})`:''}</button>))}
     </div>
 
-    {/* Category filter */}
-    <div style={{display:'flex',gap:8,padding:'10px 16px',overflowX:'auto',flexShrink:0}}>
+    {/* Category filter — only for non-countup tabs */}
+    {mainTab!=='countup'&&(<div style={{display:'flex',gap:8,padding:'10px 16px',overflowX:'auto',flexShrink:0}}>
       {[{key:'all',label:'All',emoji:''},...CD_CATS].map(c=>(<button key={c.key} onClick={()=>setCatFilter(c.key)} style={{background:catFilter===c.key?BLUE:'#141414',border:`1px solid ${catFilter===c.key?BLUE:BORDER}`,borderRadius:20,padding:'5px 14px',fontSize:12,fontWeight:500,color:catFilter===c.key?'#000':MUTED,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0,fontFamily:'inherit'}}>{c.emoji?c.emoji+' ':''}{c.label}</button>))}
-    </div>
+    </div>)}
+
+    {/* Count-up header info */}
+    {mainTab==='countup'&&(<div style={{padding:'10px 16px 4px',flexShrink:0}}>
+      <div style={{fontSize:12,color:MUTED}}>How many days since each event. Tap + to add.</div>
+    </div>)}
 
     <div style={{flex:1,overflowY:'auto',padding:'4px 16px',paddingBottom:NAV_H+12}}>
       {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:40}}><Spinner size={22} color={BLUE}/></div>}
-      {!loading&&displayList.length===0&&(<div style={{textAlign:'center',padding:'60px 0',color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>⏳</div><div style={{fontSize:14}}>No {mainTab} events</div></div>)}
+      {!loading&&displayList.length===0&&(<div style={{textAlign:'center',padding:'60px 0',color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>{mainTab==='countup'?'⏱':'⏳'}</div><div style={{fontSize:14}}>No {mainTab==='countup'?'count-up events':mainTab+' events'}</div></div>)}
       {displayList.map((item,i)=>{
+        const isCountUp=mainTab==='countup';
         const ci=CD_CATS.find(c=>c.key===item.category)||CD_CATS[0];
-        const isToday=item._days===0;const isPast=item._days<0;
-        const color=CD_COLORS[item.category]||BLUE;
+        const isToday=item._days===0;const isPast=item._days<0&&!isCountUp;
+        const color=isCountUp?'#22d3ee':(CD_COLORS[item.category]||BLUE);
+        const daysVal=isCountUp?item._since:Math.abs(item._days);
         return(<div key={item.id} onClick={()=>setSheet(item)} style={{background:'#141414',border:`1px solid ${isToday?'rgba(247,201,79,0.3)':BORDER}`,borderRadius:16,padding:'15px 16px',marginBottom:8,display:'flex',alignItems:'center',gap:14,cursor:'pointer',opacity:isPast?0.55:1,animation:'fadeIn .2s ease both',animationDelay:`${i*25}ms`}}>
-          <div style={{width:44,height:44,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,background:color+'1a',flexShrink:0}}>{ci.emoji}</div>
+          <div style={{width:44,height:44,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,background:color+'1a',flexShrink:0}}>{isCountUp?'⏱':ci.emoji}</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:15,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#e8e8e8'}}>{item.name}</div>
-            <div style={{fontSize:11,color:MUTED,marginTop:2,fontFamily:'monospace'}}>
-              {new Date(item._effectiveDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+            <div style={{fontSize:11,color:MUTED,marginTop:2}}>
+              {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
               {item.recurring&&<span style={{marginLeft:6,color:BLUE}}>↻ {item.recurring}</span>}
             </div>
           </div>
           <div style={{textAlign:'right',flexShrink:0}}>
-            {isToday?<div style={{color:'#f7c94f',fontWeight:700,fontSize:18}}>Today</div>:<>
-              <div style={{fontSize:32,fontWeight:700,lineHeight:1,fontFamily:'monospace',color:isPast?MUTED:color}}>{Math.abs(item._days)}</div>
-              <div style={{fontSize:10,color:MUTED,textTransform:'uppercase',letterSpacing:'0.05em',marginTop:2,fontWeight:500}}>{isPast?'Days Ago':'Days Left'}</div>
+            {isToday&&!isCountUp?<div style={{color:'#f7c94f',fontWeight:700,fontSize:18}}>Today</div>:<>
+              <div style={{fontSize:32,fontWeight:700,lineHeight:1,fontFamily:'monospace',color:isPast?MUTED:color}}>{daysVal}</div>
+              <div style={{fontSize:10,color:MUTED,textTransform:'uppercase',letterSpacing:'0.05em',marginTop:2,fontWeight:500}}>{isCountUp?'Days Since':isPast?'Days Ago':'Days Left'}</div>
             </>}
           </div>
         </div>);
       })}
     </div>
 
-    <button onClick={()=>setSheet('new')} style={{position:'fixed',bottom:NAV_H+20,right:20,width:56,height:56,borderRadius:'50%',background:BLUE,border:'none',color:'#000',fontSize:26,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 20px rgba(79,142,247,0.4)',zIndex:50,fontWeight:900}}>+</button>
-
-    {sheet&&(<CDEventSheet item={sheet==='new'?null:sheet} onClose={()=>setSheet(null)} onSave={handleSave} onDelete={handleDelete}/>)}
+    {sheet&&(<CDEventSheet item={sheet==='new'?null:sheet} onClose={()=>setSheet(null)} onSave={handleSave} onDelete={handleDelete} defaultDirection={mainTab==='countup'?'countup':'countdown'}/>)}
   </div>);
 }
 

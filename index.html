@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#000000"/>
-<title>DAYMAN 1.4</title>
+<title>DAYMAN 1.5</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -29,12 +29,19 @@ input,textarea,select{font-size:16px!important;color-scheme:dark;font-family:inh
 .section-header{height:48px;min-height:48px;max-height:48px;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid #2a2a2a;flex-shrink:0;}
 input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
-/* Pill tab row */
-.pill-tabs{display:flex;gap:8px;padding:10px 16px;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
+/* Pill tab row — for category/type filters */
+.pill-tabs{display:flex;gap:8px;padding:8px 16px;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
 .pill-tabs::-webkit-scrollbar{display:none}
 .pill-tab{border-radius:20px;padding:5px 14px;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;flex-shrink:0;border:1px solid;font-family:inherit;transition:all .15s}
 .pill-tab.active{color:#000;font-weight:600}
 .pill-tab.inactive{background:#141414;color:#777}
+/* Chrome tabs — for primary section tabs */
+.chrome-tabs{display:flex;overflow-x:auto;flex-shrink:0;border-bottom:1px solid #2a2a2a;scrollbar-width:none;background:#000}
+.chrome-tabs::-webkit-scrollbar{display:none}
+.chrome-tab{flex-shrink:0;padding:0 16px;height:38px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;letter-spacing:0.04em;cursor:pointer;border:none;background:none;font-family:inherit;position:relative;white-space:nowrap;transition:color .15s}
+.chrome-tab.active{color:#e8e8e8}
+.chrome-tab.inactive{color:#666}
+.chrome-tab.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
 </style>
 </head>
 <body>
@@ -134,6 +141,8 @@ const nextOccurrence=(dateStr,recurring)=>{
 
 // years since original date
 const yearsFrom=dateStr=>{if(!dateStr)return null;const orig=new Date(dateStr+'T00:00:00');const today=new Date();today.setHours(0,0,0,0);let yrs=today.getFullYear()-orig.getFullYear();if(today.getMonth()<orig.getMonth()||(today.getMonth()===orig.getMonth()&&today.getDate()<orig.getDate()))yrs--;return yrs;};
+// For countdown items: age they WILL BE on that upcoming day
+const yearsUntilNext=dateStr=>{const cur=yearsFrom(dateStr);if(cur===null)return null;return cur+1;};
 // sprint day helper
 const getTodayAbbr=()=>['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date().getDay()];
 const isTodaySprint=sp=>{if(!sp.frequency_days)return true;return sp.frequency_days.split(',').includes(getTodayAbbr());};
@@ -657,10 +666,13 @@ function SprintSection({user}){
       <DotMenu items={[{label:'↻ Refresh',action:loadSprints},{label:'📊 Run History',action:()=>setShowHistory(true)},{label:'⚙️ Settings',action:()=>setShowSettings(true)}]}/>
       <button onClick={()=>{setEditTarget(null);setView('edit');}} style={{background:LIME,border:'none',borderRadius:8,padding:'5px 13px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
-    {/* Pill tabs */}
-    <div className="pill-tabs" style={{borderBottom:`1px solid ${BORDER}`}}>
+    {/* Chrome tabs */}
+    <div className="chrome-tabs">
       {[['today',`Today (${todaySprints.length})`,LIME],['done',`Done (${doneCount})`,GREEN],['notyet',`Not Yet (${notYetSprints.length})`,MUTED]].map(([k,l,col])=>(
-        <button key={k} className={`pill-tab ${sprintTab===k?'active':'inactive'}`} onClick={()=>setSprintTab(k)} style={{borderColor:sprintTab===k?col:BORDER,background:sprintTab===k?col:'#141414',color:sprintTab===k?'#000':MUTED}}>{l}</button>
+        <button key={k} className={`chrome-tab ${sprintTab===k?'active':'inactive'}`} onClick={()=>setSprintTab(k)} style={{color:sprintTab===k?col:'#666'}}>
+          {l}
+          {sprintTab===k&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:col}}/>}
+        </button>
       ))}
     </div>
     {/* Time-of-day filter (today tab only) */}
@@ -703,72 +715,57 @@ function dayLabel(dateStr){
 function dayNum(dateStr){return new Date(dateStr+'T00:00:00').getDate();}
 
 function HabitDetailScreen({habit,user,onClose,onSave,onDelete}){
-  const [logs60,setLogs60]=useState({});
-  const [loading60,setLoading60]=useState(true);
+  const [logs,setLogs]=useState({});
+  const [loadingLogs,setLoadingLogs]=useState(true);
   const [name,setName]=useState(habit.name||'');
   const [time,setTime]=useState(habit.scheduled_time||'');
-  const [seed,setSeed]=useState(habit.streak_seed||0);
   const [color,setColor]=useState(habit.color||HABIT_COLORS[0]);
+  const [saving,setSaving]=useState(false);
 
-  // Build last 60 days
-  const dates60=useMemo(()=>{const d=[];for(let i=59;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);d.push(dt.toISOString().split('T')[0]);}return d;},[]);
-  const today=dates60[59];
+  const dates300=useMemo(()=>{const d=[];for(let i=299;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);d.push(dt.toISOString().split('T')[0]);}return d;},[]);
+  const today=dates300[299];
 
   useEffect(()=>{
-    const from=dates60[0];
-    db.from('habit_logs').select('*').eq('habit_id',habit.id).gte('log_date',from).lte('log_date',today)
-      .then(({data})=>{const m={};(data||[]).forEach(r=>{m[r.log_date]=r.value;});setLogs60(m);setLoading60(false);});
+    db.from('habit_logs').select('*').eq('habit_id',habit.id).gte('log_date',dates300[0]).lte('log_date',today)
+      .then(({data})=>{const m={};(data||[]).forEach(r=>{m[r.log_date]=r.value;});setLogs(m);setLoadingLogs(false);});
   },[habit.id]);
 
-  // Streak calc
   const streak=useMemo(()=>{
     let s=0;
-    for(let i=59;i>=0;i--){
-      const d=dates60[59-i]||dates60[0];// iterate from today backwards
-    }
-    // iterate from today back
-    for(let i=0;i<60;i++){
+    for(let i=0;i<300;i++){
       const dt=new Date();dt.setDate(dt.getDate()-i);const ds=dt.toISOString().split('T')[0];
-      const val=logs60[ds]??null;
+      const val=logs[ds]??null;
       const tracked=habit.type==='bool'?(val===1||val===-1):(val!==null&&val>0);
       if(tracked)s++;
       else if(i===0)continue;
       else break;
     }
-    return s+(habit.streak_seed||0);
-  },[logs60,habit]);
+    return s;
+  },[logs]);
 
-  // Build calendar weeks (8 weeks, Mon-Sun)
-  const weeks=useMemo(()=>{
-    const all=[...dates60];
-    // Pad front to start on Monday
-    const firstDow=new Date(all[0]+'T00:00:00').getDay();// 0=Sun
-    const padNeeded=firstDow===0?6:firstDow-1;// days to pad at front
-    const padded=Array(padNeeded).fill(null).concat(all);
-    const ws=[];for(let i=0;i<padded.length;i+=7){ws.push(padded.slice(i,i+7));}
-    return ws;
-  },[dates60]);
-
-  const cellColor=(date)=>{
-    if(!date)return'transparent';
-    const val=logs60[date]??null;
-    const col=habit.color||BLUE;
-    if(habit.type==='bool'){if(val===1)return col;if(val===-1)return'#333';}
-    else{if(val>0)return col;}
-    return'#1a1a1a';
-  };
-  const cellIcon=(date)=>{
-    if(!date)return'';
-    const val=logs60[date]??null;
-    if(habit.type==='bool'){if(val===1)return'✓';if(val===-1)return'—';}
-    else{if(val>0)return val;}
-    return'';
+  const toggleDay=async(date)=>{
+    if(date>today)return;
+    const cur=logs[date]??null;
+    let next=null;
+    if(habit.type==='bool'){if(cur===null)next=1;else if(cur===1)next=-1;else next=null;}
+    else{next=(cur||0)+1;if(next>9)next=null;}
+    setLogs(l=>{const nl={...l};if(next===null)delete nl[date];else nl[date]=next;return nl;});
+    if(next===null){await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);}
+    else{await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});}
   };
 
-  const save=()=>{if(!name.trim())return;onSave(habit.id,{name:name.trim(),scheduled_time:time||null,streak_seed:seed,color});};
+  const months=useMemo(()=>{
+    const map={};
+    dates300.forEach(d=>{const key=d.slice(0,7);if(!map[key])map[key]=[];map[key].push(d);});
+    return Object.entries(map).reverse();
+  },[dates300]);
+
+  const cellBg=(date)=>{const val=logs[date]??null;const col=habit.color||BLUE;if(habit.type==='bool'){if(val===1)return col;if(val===-1)return'#333';}else{if(val>0)return col;}return'#1a1a1a';};
+  const cellIcon=(date)=>{const val=logs[date]??null;if(habit.type==='bool'){if(val===1)return'✓';if(val===-1)return'—';}else{if(val>0)return val;}return null;};
+
+  const save=async()=>{if(!name.trim())return;setSaving(true);await onSave(habit.id,{name:name.trim(),scheduled_time:time||null,color});setSaving(false);};
 
   return(<div style={{position:'fixed',inset:0,background:'#000',zIndex:500,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-    {/* Header */}
     <div className="section-header">
       <button onClick={onClose} style={{background:'none',border:'none',color:MUTED,fontSize:26,cursor:'pointer',lineHeight:1,marginLeft:-4}}>‹</button>
       <div style={{flex:1,fontWeight:900,fontSize:16,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:habit.color||BLUE}}>{habit.name}</div>
@@ -776,39 +773,46 @@ function HabitDetailScreen({habit,user,onClose,onSave,onDelete}){
     </div>
 
     <div style={{flex:1,overflowY:'auto',padding:'0 16px 40px'}}>
-      {/* Big streak */}
-      <div style={{textAlign:'center',padding:'28px 0 20px'}}>
-        <div style={{fontSize:80,fontWeight:900,color:habit.color||BLUE,lineHeight:1,fontVariantNumeric:'tabular-nums'}}>{streak}</div>
-        <div style={{fontSize:14,color:MUTED,letterSpacing:2,fontWeight:700,marginTop:6,textTransform:'uppercase'}}>Day Streak 🔥</div>
-        {habit.scheduled_time&&<div style={{fontSize:12,color:ORANGE,marginTop:6}}>⏰ {fmtTime12(habit.scheduled_time)}</div>}
+      <div style={{textAlign:'center',padding:'24px 0 16px'}}>
+        <div style={{fontSize:88,fontWeight:900,color:habit.color||BLUE,lineHeight:1,fontVariantNumeric:'tabular-nums'}}>{streak}</div>
+        <div style={{fontSize:13,color:MUTED,letterSpacing:2,fontWeight:700,marginTop:4,textTransform:'uppercase'}}>Day Streak 🔥</div>
+        {habit.scheduled_time&&<div style={{fontSize:12,color:ORANGE,marginTop:5}}>⏰ {fmtTime12(habit.scheduled_time)}</div>}
+        <div style={{fontSize:11,color:'#444',marginTop:5}}>Tap any day to toggle · ✓ done · — skipped · blank missed</div>
       </div>
 
-      {/* Calendar */}
-      <div style={{marginBottom:24}}>
-        <div style={{fontSize:10,color:MUTED,letterSpacing:2,fontWeight:700,marginBottom:10}}>LAST 60 DAYS</div>
-        {/* Day labels */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:3}}>
-          {['M','T','W','T','F','S','S'].map((d,i)=>(<div key={i} style={{textAlign:'center',fontSize:9,color:'#444',fontWeight:700}}>{d}</div>))}
-        </div>
-        {loading60&&<div style={{display:'flex',justifyContent:'center',padding:'20px'}}><Spinner size={18} color={habit.color||BLUE}/></div>}
-        {!loading60&&weeks.map((week,wi)=>(<div key={wi} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:3}}>
-          {week.map((date,di)=>{
-            const isToday=date===today;
-            const bg=cellColor(date);
-            const icon=cellIcon(date);
-            const isFuture=date&&date>today;
-            return(<div key={di} style={{aspectRatio:'1',borderRadius:6,background:date?bg:'transparent',border:isToday?`2px solid ${habit.color||BLUE}`:'1px solid transparent',display:'flex',alignItems:'center',justifyContent:'center',opacity:isFuture?0.2:1}}>
-              <span style={{fontSize:11,fontWeight:700,color:bg==='#1a1a1a'||bg==='transparent'?'#333':'#000'}}>{icon}</span>
-            </div>);
-          })}
-        </div>))}
-        {/* Legend */}
-        <div style={{display:'flex',gap:12,marginTop:8,flexWrap:'wrap'}}>
-          {[[habit.color||BLUE,'Done'],['#333','Skipped (streak safe)'],['#1a1a1a','Missed']].map(([col,lbl])=>(<div key={lbl} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:10,height:10,borderRadius:2,background:col,flexShrink:0}}/><span style={{fontSize:10,color:MUTED}}>{lbl}</span></div>))}
-        </div>
+      {loadingLogs&&<div style={{display:'flex',justifyContent:'center',padding:'30px'}}><Spinner size={20} color={habit.color||BLUE}/></div>}
+
+      {!loadingLogs&&months.map(([monthKey,monthDates])=>{
+        const mo=new Date(monthKey+'-01T00:00:00');
+        const monthLabel=mo.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+        const firstDow=new Date(monthDates[0]+'T00:00:00').getDay();
+        const padNeeded=firstDow===0?6:firstDow-1;
+        const padded=Array(padNeeded).fill(null).concat(monthDates);
+        const weeks=[];for(let i=0;i<padded.length;i+=7)weeks.push(padded.slice(i,i+7));
+        return(<div key={monthKey} style={{marginBottom:22}}>
+          <div style={{fontSize:11,color:MUTED,fontWeight:700,letterSpacing:1,marginBottom:6,textTransform:'uppercase'}}>{monthLabel}</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:3}}>
+            {['M','T','W','T','F','S','S'].map((d,i)=>(<div key={i} style={{textAlign:'center',fontSize:8,color:'#333',fontWeight:700,paddingBottom:2}}>{d}</div>))}
+          </div>
+          {weeks.map((week,wi)=>(<div key={wi} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:2}}>
+            {week.map((date,di)=>{
+              if(!date)return<div key={di}/>;
+              const isToday=date===today;const isFuture=date>today;
+              const bg=cellBg(date);const icon=cellIcon(date);
+              return(<button key={di} onClick={()=>toggleDay(date)} disabled={isFuture}
+                style={{aspectRatio:'1',borderRadius:5,background:bg,border:isToday?`2px solid ${habit.color||BLUE}`:'1px solid #1f1f1f',display:'flex',alignItems:'center',justifyContent:'center',cursor:isFuture?'default':'pointer',opacity:isFuture?0.12:1,fontFamily:'inherit',padding:0}}>
+                {icon?<span style={{fontSize:10,fontWeight:700,color:bg==='#1a1a1a'||bg==='#333'?'#777':'#000'}}>{icon}</span>
+                  :<span style={{fontSize:9,color:'#2a2a2a'}}>{new Date(date+'T00:00:00').getDate()}</span>}
+              </button>);
+            })}
+          </div>))}
+        </div>);
+      })}
+
+      <div style={{display:'flex',gap:12,marginBottom:24,flexWrap:'wrap'}}>
+        {[[habit.color||BLUE,'✓ Done'],['#333','— Skipped'],['#1a1a1a','Missed']].map(([col,lbl])=>(<div key={lbl} style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:10,height:10,borderRadius:2,background:col}}/><span style={{fontSize:10,color:MUTED}}>{lbl}</span></div>))}
       </div>
 
-      {/* Edit fields */}
       <div style={{borderTop:`1px solid ${BORDER}`,paddingTop:20}}>
         <div style={{fontSize:10,color:MUTED,letterSpacing:2,fontWeight:700,marginBottom:14}}>EDIT HABIT</div>
         <FormInput label="Name"><input value={name} onChange={e=>setName(e.target.value)} style={inp()}/></FormInput>
@@ -824,18 +828,7 @@ function HabitDetailScreen({habit,user,onClose,onSave,onDelete}){
             {HABIT_COLORS.map(col=>(<button key={col} onClick={()=>setColor(col)} style={{width:30,height:30,borderRadius:'50%',background:col,border:'none',cursor:'pointer',outline:color===col?'2px solid #fff':'none',outlineOffset:2}}/>))}
           </div>
         </FormInput>
-        <FormInput label="Streak Seed — days before app tracking">
-          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
-            <button onClick={()=>setSeed(s=>Math.max(0,s-1))} style={{width:40,height:40,borderRadius:8,border:`1px solid ${BORDER}`,background:'#1a1a1a',color:TEXT,cursor:'pointer',fontSize:20,fontFamily:'inherit',flexShrink:0}}>−</button>
-            <div style={{flex:1,textAlign:'center'}}>
-              <div style={{fontSize:30,fontWeight:900,color:seed>0?GREEN:MUTED,fontVariantNumeric:'tabular-nums'}}>{seed}</div>
-              <div style={{fontSize:10,color:MUTED,marginTop:1}}>days added to streak</div>
-            </div>
-            <button onClick={()=>setSeed(s=>s+1)} style={{width:40,height:40,borderRadius:8,border:`1px solid ${BORDER}`,background:'#1a1a1a',color:TEXT,cursor:'pointer',fontSize:20,fontFamily:'inherit',flexShrink:0}}>+</button>
-          </div>
-          <div style={{fontSize:11,color:MUTED,lineHeight:1.5}}>Set this if you've been doing this habit before tracking here. Adds to your streak count.</div>
-        </FormInput>
-        <button onClick={save} style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:habit.color||GREEN,color:'#000',fontWeight:900,fontSize:15,fontFamily:'inherit',cursor:'pointer',marginTop:4}}>Save Changes</button>
+        <button onClick={save} disabled={saving} style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:saving?'#2a2a2a':habit.color||GREEN,color:'#000',fontWeight:900,fontSize:15,fontFamily:'inherit',cursor:saving?'default':'pointer',marginTop:4}}>{saving?'Saving…':'Save Changes'}</button>
       </div>
     </div>
   </div>);
@@ -844,9 +837,8 @@ function HabitDetailScreen({habit,user,onClose,onSave,onDelete}){
 function EditHabitSheet({habit,onClose,onSave,onDelete}){
   const [name,setName]=useState(habit.name||'');
   const [time,setTime]=useState(habit.scheduled_time||'');
-  const [seed,setSeed]=useState(habit.streak_seed||0);
   const [color,setColor]=useState(habit.color||HABIT_COLORS[0]);
-  const save=()=>{if(!name.trim())return;onSave(habit.id,{name:name.trim(),scheduled_time:time||null,streak_seed:seed,color});};
+  const save=()=>{if(!name.trim())return;onSave(habit.id,{name:name.trim(),scheduled_time:time||null,color});};
   return(<Sheet onClose={onClose} title="Edit Habit">
     <FormInput label="Name"><input value={name} onChange={e=>setName(e.target.value)} style={inp()} autoFocus/></FormInput>
     <FormInput label="Time (optional)">
@@ -860,17 +852,6 @@ function EditHabitSheet({habit,onClose,onSave,onDelete}){
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
         {HABIT_COLORS.map(c=>(<button key={c} onClick={()=>setColor(c)} style={{width:28,height:28,borderRadius:'50%',background:c,border:'none',cursor:'pointer',outline:color===c?'2px solid #fff':'none',outlineOffset:2}}/>))}
       </div>
-    </FormInput>
-    <FormInput label="Streak Seed — days before app tracking">
-      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
-        <button onClick={()=>setSeed(s=>Math.max(0,s-1))} style={{width:40,height:40,borderRadius:8,border:`1px solid ${BORDER}`,background:'#1a1a1a',color:TEXT,cursor:'pointer',fontSize:20,fontFamily:'inherit',flexShrink:0}}>−</button>
-        <div style={{flex:1,textAlign:'center'}}>
-          <div style={{fontSize:30,fontWeight:900,color:seed>0?GREEN:MUTED,fontVariantNumeric:'tabular-nums'}}>{seed}</div>
-          <div style={{fontSize:10,color:MUTED,marginTop:1}}>days added to streak</div>
-        </div>
-        <button onClick={()=>setSeed(s=>s+1)} style={{width:40,height:40,borderRadius:8,border:`1px solid ${BORDER}`,background:'#1a1a1a',color:TEXT,cursor:'pointer',fontSize:20,fontFamily:'inherit',flexShrink:0}}>+</button>
-      </div>
-      <div style={{fontSize:11,color:MUTED,lineHeight:1.5}}>Set this if you've been doing this habit before tracking here. It adds to your calculated streak count.</div>
     </FormInput>
     <BtnRow>
       <button onClick={()=>onDelete(habit.id)} style={{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.2)',borderRadius:12,color:'#ef4444',fontSize:14,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>Delete</button>
@@ -983,16 +964,18 @@ function HabitsSection({user}){
       <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:GREEN}}>✓</span> HABITS</span></div>
       <button onClick={()=>setShowAdd(true)} style={{background:GREEN,border:'none',borderRadius:8,padding:'5px 14px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
-    <div className="pill-tabs">
+    <div className="chrome-tabs">
       {[['all',`All (${habits.length})`],['bool','✓ Checkbox'],['count','# Counter']].map(([k,l])=>(
-        <button key={k} className={`pill-tab ${habitTypeFilter===k?'active':'inactive'}`} onClick={()=>setHabitTypeFilter(k)} style={{borderColor:habitTypeFilter===k?GREEN:BORDER,background:habitTypeFilter===k?GREEN:'#141414',color:habitTypeFilter===k?'#000':MUTED}}>{l}</button>
-      ))}
-      {completedCount>0&&(
-        <button className={`pill-tab ${hideCompleted?'active':'inactive'}`} onClick={()=>setHideCompleted(v=>!v)} style={{borderColor:hideCompleted?LIME:BORDER,background:hideCompleted?LIME:'#141414',color:hideCompleted?'#000':MUTED,marginLeft:'auto'}}>
-          {hideCompleted?`Showing ${habits.length-completedCount} left`:`${completedCount} done`}
+        <button key={k} className={`chrome-tab ${habitTypeFilter===k?'active':'inactive'}`} onClick={()=>setHabitTypeFilter(k)} style={{color:habitTypeFilter===k?GREEN:'#666'}}>
+          {l}{habitTypeFilter===k&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:GREEN}}/>}
         </button>
-      )}
+      ))}
     </div>
+    {completedCount>0&&(<div className="pill-tabs" style={{paddingTop:0}}>
+      <button className={`pill-tab ${hideCompleted?'active':'inactive'}`} onClick={()=>setHideCompleted(v=>!v)} style={{borderColor:hideCompleted?LIME:BORDER,background:hideCompleted?LIME:'#141414',color:hideCompleted?'#000':MUTED}}>
+        {hideCompleted?`Showing ${habits.length-completedCount} left`:`Hide ${completedCount} done`}
+      </button>
+    </div>)}
 
     {/* Day headers */}
     <div style={{padding:'6px 16px 0',flexShrink:0}}>
@@ -1127,7 +1110,7 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
 function CountdownSection({user}){
   const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);
   const [mainTab,setMainTab]=useState('upcoming');const [catFilter,setCatFilter]=useState('all');
-  const [sheet,setSheet]=useState(null);
+  const [sheet,setSheet]=useState(null);const [detailItem,setDetailItem]=useState(null);
 
   const load=useCallback(async()=>{
     const{data,error}=await db.from('countdowns').select('*').eq('user_id',user.id).order('target_date');
@@ -1193,10 +1176,12 @@ function CountdownSection({user}){
       <button onClick={()=>setSheet('new')} style={{background:BLUE,border:'none',borderRadius:8,padding:'5px 14px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
 
-    {/* Pill tabs */}
-    <div className="pill-tabs" style={{borderBottom:`1px solid ${BORDER}`}}>
-      {[['upcoming','Upcoming',BLUE],['far','100+ Days',MUTED],['past','Past',MUTED],['countup','Count Up','#22d3ee']].map(([k,l,col])=>(
-        <button key={k} className={`pill-tab ${mainTab===k?'active':'inactive'}`} onClick={()=>setMainTab(k)} style={{borderColor:mainTab===k?col:BORDER,background:mainTab===k?col:'#141414',color:mainTab===k?'#000':MUTED}}>{l}{tabCounts[k]>0?` (${tabCounts[k]})`:''}</button>
+    {/* Chrome tabs */}
+    <div className="chrome-tabs">
+      {[['upcoming','Upcoming',BLUE],['far','100+ Days','#aaa'],['past','Past','#aaa'],['countup','Count Up','#22d3ee']].map(([k,l,col])=>(
+        <button key={k} className={`chrome-tab ${mainTab===k?'active':'inactive'}`} onClick={()=>setMainTab(k)} style={{color:mainTab===k?col:'#666'}}>
+          {l}{tabCounts[k]>0?` (${tabCounts[k]})`:''}{mainTab===k&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:col}}/>}
+        </button>
       ))}
     </div>
 
@@ -1215,29 +1200,72 @@ function CountdownSection({user}){
         const color=isCountUp?'#22d3ee':(CD_COLORS[item.category]||BLUE);
         const daysVal=isCountUp?item._since:Math.abs(item._days);
         const isOverdue=!isCountUp&&item._days<0;
-        return(<div key={item.id} style={{background:isOverdue?'#180808':'#141414',border:`1px solid ${isToday?'rgba(247,201,79,0.3)':isOverdue?RED+'33':BORDER}`,borderRadius:16,padding:'15px 16px',marginBottom:8,display:'flex',alignItems:'center',gap:14,cursor:'pointer',animation:'fadeIn .2s ease both',animationDelay:`${i*25}ms`}} onClick={()=>setSheet(item)}>
+        const yrsLabel=item.first_date?(isCountUp?yearsFrom(item.first_date):yearsUntilNext(item.first_date)):null;
+        return(<div key={item.id} style={{background:isOverdue?'#180808':'#141414',border:`1px solid ${isToday?'rgba(247,201,79,0.3)':isOverdue?RED+'33':BORDER}`,borderRadius:16,padding:'15px 16px',marginBottom:8,display:'flex',alignItems:'center',gap:14,cursor:'pointer',animation:'fadeIn .2s ease both',animationDelay:`${i*25}ms`}} onClick={()=>setDetailItem(item)}>
           <div style={{width:44,height:44,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,background:color+'1a',flexShrink:0}}>{isCountUp?'⏱':ci.emoji}</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:15,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isOverdue?RED:'#e8e8e8'}}>{item.name}</div>
-            <div style={{fontSize:11,color:MUTED,marginTop:2}}>
-              {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-              {item.recurring&&<span style={{marginLeft:6,color:BLUE}}>↻ {item.recurring}</span>}
-              {isOverdue&&<span style={{marginLeft:6,color:RED,fontWeight:700}}> OVERDUE</span>}
+            <div style={{display:'flex',alignItems:'center',gap:6,marginTop:2,flexWrap:'wrap'}}>
+              {yrsLabel!==null&&<span style={{fontSize:12,fontWeight:700,color:color}}>{yrsLabel} {isCountUp?'yrs':'→ turns '+yrsLabel}</span>}
+              <span style={{fontSize:11,color:MUTED}}>
+                {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                {item.recurring&&<span style={{marginLeft:5,color:BLUE}}>↻ {item.recurring}</span>}
+                {isOverdue&&<span style={{marginLeft:5,color:RED,fontWeight:700}}>OVERDUE</span>}
+              </span>
             </div>
           </div>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4,flexShrink:0}}>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
             {isToday&&!isCountUp?<div style={{color:'#f7c94f',fontWeight:700,fontSize:18}}>Today</div>:<>
-              <div style={{fontSize:32,fontWeight:700,lineHeight:1,fontFamily:'monospace',color:isOverdue?RED:isPast?MUTED:color}}>{isOverdue?Math.abs(daysVal):daysVal}</div>
+              <div style={{fontSize:32,fontWeight:700,lineHeight:1,fontFamily:'monospace',color:isOverdue?RED:isPast?MUTED:color}}>{daysVal}</div>
               <div style={{fontSize:10,color:MUTED,textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:500}}>{isCountUp?'Days Since':isOverdue?'Days Overdue':'Days Until'}</div>
-              {item.first_date&&yearsFrom(item.first_date)!==null&&<div style={{fontSize:11,color:color,fontWeight:700}}>{yearsFrom(item.first_date)} yrs</div>}
             </>}
-            {!isCountUp&&!isPast&&(<button onClick={e=>handleMarkComplete(item,e)} style={{marginTop:4,padding:'4px 10px',borderRadius:8,border:`1px solid ${GREEN}44`,background:'#0a140a',color:GREEN,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>✓ Done</button>)}
           </div>
         </div>);
       })}
     </div>
 
     {sheet&&(<CDEventSheet item={sheet==='new'?null:sheet} onClose={()=>setSheet(null)} onSave={handleSave} onDelete={handleDelete} defaultDirection={mainTab==='countup'?'countup':'countdown'}/>)}
+    {detailItem&&(<CDDetailScreen item={detailItem} onClose={()=>setDetailItem(null)} onEdit={item=>{setDetailItem(null);setSheet(item);}} onMarkComplete={async item=>{await handleMarkComplete(item,{stopPropagation:()=>{}});setDetailItem(null);}} onDelete={async id=>{await handleDelete(id);setDetailItem(null);}}/>)}
+  </div>);
+}
+
+function CDDetailScreen({item,onClose,onEdit,onMarkComplete,onDelete}){
+  const isCountUp=item.direction==='countup';
+  const days=daysUntil(item.target_date);const isToday=days===0;const isOverdue=!isCountUp&&days<0;
+  const ci=CD_CATS.find(c=>c.key===item.category)||CD_CATS[0];
+  const color=isCountUp?'#22d3ee':(CD_COLORS[item.category]||BLUE);
+  const yrsLabel=item.first_date?(isCountUp?yearsFrom(item.first_date):yearsUntilNext(item.first_date)):null;
+  return(<div style={{position:'fixed',inset:0,background:'#000',zIndex:400,display:'flex',flexDirection:'column'}}>
+    <div className="section-header">
+      <button onClick={onClose} style={{background:'none',border:'none',color:MUTED,fontSize:26,cursor:'pointer',lineHeight:1,marginLeft:-4}}>‹</button>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:900,fontSize:16,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isOverdue?RED:color}}>{item.name}</div>
+        {yrsLabel!==null&&<div style={{fontSize:12,color:color,fontWeight:700,marginTop:1}}>{isCountUp?`${yrsLabel} yrs`:`→ turns ${yrsLabel}`}</div>}
+      </div>
+      <button onClick={()=>onEdit(item)} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:8,padding:'5px 12px',color:MUTED,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Edit</button>
+    </div>
+    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'0 24px',gap:16,textAlign:'center'}}>
+      <div style={{fontSize:64,lineHeight:1}}>{isCountUp?'⏱':ci.emoji}</div>
+      {isToday&&!isCountUp?(
+        <div style={{fontSize:42,fontWeight:900,color:'#f7c94f',letterSpacing:-2}}>TODAY! 🎉</div>
+      ):(
+        <>
+          <div style={{fontSize:96,fontWeight:900,lineHeight:1,fontVariantNumeric:'tabular-nums',color:isOverdue?RED:color}}>{Math.abs(days)}</div>
+          <div style={{fontSize:16,color:MUTED,letterSpacing:2,fontWeight:600,textTransform:'uppercase'}}>{isCountUp?'Days Since':isOverdue?'Days Overdue':'Days Until'}</div>
+        </>
+      )}
+      <div style={{fontSize:14,color:MUTED,marginTop:4}}>
+        {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}
+      </div>
+      {item.recurring&&<div style={{fontSize:12,color:BLUE}}>↻ Repeats {item.recurring}</div>}
+    </div>
+    <div style={{padding:'16px 20px 40px',borderTop:`1px solid ${BORDER}`,display:'flex',flexDirection:'column',gap:10}}>
+      {!isCountUp&&<button onClick={()=>onMarkComplete(item)} style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:GREEN,color:'#000',fontWeight:900,fontSize:15,cursor:'pointer',fontFamily:'inherit'}}>✓ Mark as Done</button>}
+      <div style={{display:'flex',gap:8}}>
+        <button onClick={()=>onEdit(item)} style={{flex:1,padding:'12px',borderRadius:10,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>✏️ Edit</button>
+        <button onClick={()=>{if(window.confirm('Delete this countdown?'))onDelete(item.id);}} style={{flex:1,padding:'12px',borderRadius:10,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.1)',color:'#ef4444',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Delete</button>
+      </div>
+    </div>
   </div>);
 }
 
@@ -1255,19 +1283,34 @@ function FreqTaskDetail({task,boards,onClose,onSave,onDelete,onMarkDone}){
   const [freq,setFreq]=useState(r.frequency||'');
   const [notes,setNotes]=useState(r.notes||'');
   const [priority,setPriority]=useState(r.priority||'normal');
+  const [status,setStatus]=useState(r.status||'list');
   const [dueDate,setDueDate]=useState(r.due_date||'');
+  const [eventDate,setEventDate]=useState(r.event_date||'');
   const [time,setTime]=useState(r.time?r.time.slice(0,5):'');
   const [duration,setDuration]=useState(r.duration||'');
   const [link,setLink]=useState(r.link||'');
+  const [keepLink,setKeepLink]=useState(r.keep_link||'');
   const [action,setAction]=useState(r.action||'');
   const [brand,setBrand]=useState(r.brand||'');
+  const [gameday,setGameday]=useState(r.gameday||'');
   const [device,setDevice]=useState(r.device||'');
   const [person,setPerson]=useState(r.person||'');
-  const [labels,setLabels]=useState(r.labels||[]);
+  const [sprintId,setSprintId]=useState(r.sprint_id||'');
+  const [notifyMins,setNotifyMins]=useState(r.notify_mins!=null?String(r.notify_mins):'');
+  const [isRef,setIsRef]=useState(r.is_ref||false);
+  const [mundane,setMundane]=useState(r.mundane||false);
+  const [labelsStr,setLabelsStr]=useState((r.labels||[]).join(', '));
   const [saving,setSaving]=useState(false);
   const PRIS=[{k:'crush',l:'🔥 Crush',c:'#FF9F0A'},{k:'high',l:'High',c:RED},{k:'normal',l:'Normal',c:MUTED},{k:'low',l:'Low',c:BLUE}];
+  const STATUSES=[{k:'inprogress',l:'In Progress',c:'#0A84FF'},{k:'nextup',l:'Next Up',c:'#5E5CE6'},{k:'do',l:'To Do',c:LIME},{k:'list',l:'List',c:'#888'}];
   const ACTIONS=['buy','call','email','research','review','schedule','watch','read','fix','build','plan','pay'];
-  const save=async()=>{setSaving(true);await onSave(r.id,{title,frequency:freq||null,notes,priority,due_date:dueDate||null,time:time||null,duration:duration||null,link:link||null,action:action||null,brand:brand||null,device:device||null,person:person||null,labels});setSaving(false);};
+  const NOTIFY_OPTS=[{v:'',l:'Off'},{v:'0',l:'On time'},{v:'5',l:'5m'},{v:'15',l:'15m'},{v:'30',l:'30m'},{v:'60',l:'1h'},{v:'1440',l:'1 day'}];
+  const save=async()=>{
+    setSaving(true);
+    const labelsArr=labelsStr.split(',').map(s=>s.trim()).filter(Boolean);
+    await onSave(r.id,{title,frequency:freq||null,notes,priority,status,due_date:dueDate||null,event_date:eventDate||null,time:time||null,duration:duration||null,link:link||null,keep_link:keepLink||null,action:action||null,brand:brand||null,gameday:gameday||null,device:device||null,person:person||null,sprint_id:sprintId||null,notify_mins:notifyMins!==''?parseInt(notifyMins):null,is_ref:isRef,mundane,labels:labelsArr});
+    setSaving(false);
+  };
   const fi={...inp(),marginBottom:0};
   return(<div style={{position:'fixed',inset:0,background:'#000',zIndex:500,display:'flex',flexDirection:'column'}}>
     <div className="section-header">
@@ -1293,29 +1336,64 @@ function FreqTaskDetail({task,boards,onClose,onSave,onDelete,onMarkDone}){
       {/* Core fields */}
       <FormInput label="Title"><input value={title} onChange={e=>setTitle(e.target.value)} style={fi}/></FormInput>
       <FormInput label="Frequency"><input value={freq} onChange={e=>setFreq(e.target.value)} placeholder="e.g. 7, daily, weekly" style={fi}/></FormInput>
+
       <FormInput label="Priority">
         <div style={{display:'flex',gap:6}}>
           {PRIS.map(p=>(<button key={p.k} onClick={()=>setPriority(p.k)} style={{flex:1,padding:'8px 4px',borderRadius:8,border:`1px solid ${priority===p.k?p.c:BORDER}`,background:priority===p.k?p.c+'22':'#1a1a1a',color:priority===p.k?p.c:MUTED,fontSize:11,fontWeight:priority===p.k?700:400,cursor:'pointer',fontFamily:'inherit'}}>{p.l}</button>))}
         </div>
       </FormInput>
+
+      <FormInput label="Status">
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {STATUSES.map(s=>(<button key={s.k} onClick={()=>setStatus(s.k)} style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${status===s.k?s.c:BORDER}`,background:status===s.k?s.c+'22':'#1a1a1a',color:status===s.k?s.c:MUTED,fontSize:11,fontWeight:status===s.k?700:400,cursor:'pointer',fontFamily:'inherit'}}>{s.l}</button>))}
+        </div>
+      </FormInput>
+
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
         <FormInput label="Due Date"><input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={fi}/></FormInput>
-        <FormInput label="Time"><input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...fi,color:time?ORANGE:MUTED}}/></FormInput>
+        <FormInput label="Event Date"><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} style={fi}/></FormInput>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-        <FormInput label="Duration"><input value={duration} onChange={e=>setDuration(e.target.value)} placeholder="e.g. 30m, 1h" style={fi}/></FormInput>
-        <FormInput label="Person"><input value={person} onChange={e=>setPerson(e.target.value)} placeholder="Who?" style={fi}/></FormInput>
+        <FormInput label="Time"><input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...fi,color:time?ORANGE:MUTED}}/></FormInput>
+        <FormInput label="Duration"><input value={duration} onChange={e=>setDuration(e.target.value)} placeholder="30m, 1h" style={fi}/></FormInput>
       </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        <FormInput label="Person"><input value={person} onChange={e=>setPerson(e.target.value)} placeholder="Who?" style={fi}/></FormInput>
+        <FormInput label="Brand"><input value={brand} onChange={e=>setBrand(e.target.value)} placeholder="Brand" style={fi}/></FormInput>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        <FormInput label="Device"><input value={device} onChange={e=>setDevice(e.target.value)} placeholder="📱" style={fi}/></FormInput>
+        <FormInput label="Gameday"><input value={gameday} onChange={e=>setGameday(e.target.value)} placeholder="Game" style={fi}/></FormInput>
+      </div>
+
       <FormInput label="Action">
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {ACTIONS.map(a=>(<button key={a} onClick={()=>setAction(action===a?'':a)} style={{padding:'5px 10px',borderRadius:8,border:`1px solid ${action===a?ORANGE:BORDER}`,background:action===a?ORANGE+'22':'#1a1a1a',color:action===a?ORANGE:MUTED,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>{a}</button>))}
         </div>
       </FormInput>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-        <FormInput label="Brand"><input value={brand} onChange={e=>setBrand(e.target.value)} placeholder="Brand tag" style={fi}/></FormInput>
-        <FormInput label="Device"><input value={device} onChange={e=>setDevice(e.target.value)} placeholder="📱" style={fi}/></FormInput>
-      </div>
+
+      <FormInput label="Notify Before">
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {NOTIFY_OPTS.map(o=>(<button key={o.v} onClick={()=>setNotifyMins(o.v)} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${notifyMins===o.v?BLUE:BORDER}`,background:notifyMins===o.v?BLUE+'22':'#1a1a1a',color:notifyMins===o.v?BLUE:MUTED,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>{o.l}</button>))}
+        </div>
+      </FormInput>
+
       <FormInput label="Link"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" style={fi}/></FormInput>
+      <FormInput label="Keep Link"><input value={keepLink} onChange={e=>setKeepLink(e.target.value)} placeholder="Reference URL" style={fi}/></FormInput>
+      <FormInput label="Sprint ID"><input value={sprintId} onChange={e=>setSprintId(e.target.value)} placeholder="Sprint UUID" style={fi}/></FormInput>
+      <FormInput label="Labels (comma separated)"><input value={labelsStr} onChange={e=>setLabelsStr(e.target.value)} placeholder="label1, label2" style={fi}/></FormInput>
+
+      <div style={{display:'flex',gap:16,marginBottom:14,marginTop:4}}>
+        <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13}}>
+          <input type="checkbox" checked={isRef} onChange={e=>setIsRef(e.target.checked)} style={{width:16,height:16,accentColor:BLUE}}/>
+          <span style={{color:isRef?TEXT:MUTED}}>Reference item</span>
+        </label>
+        <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13}}>
+          <input type="checkbox" checked={mundane} onChange={e=>setMundane(e.target.checked)} style={{width:16,height:16,accentColor:'#888'}}/>
+          <span style={{color:mundane?TEXT:MUTED}}>Mundane</span>
+        </label>
+      </div>
+
       <FormInput label="Notes"><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} style={{...fi,resize:'vertical'}}/></FormInput>
       <button onClick={save} disabled={saving} style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:saving?'#2a2a2a':ORANGE,color:'#000',fontWeight:900,fontSize:15,fontFamily:'inherit',cursor:saving?'default':'pointer',marginTop:8}}>{saving?'Saving…':'Save Changes'}</button>
     </div>
@@ -1367,10 +1445,12 @@ function FreqSection({user}){
       <button onClick={()=>setAddOpen(true)} style={{background:ORANGE,border:'none',borderRadius:8,padding:'5px 13px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
 
-    {/* Pill tabs */}
-    <div className="pill-tabs" style={{borderBottom:`1px solid ${BORDER}`}}>
+    {/* Chrome tabs */}
+    <div className="chrome-tabs">
       {[['do','DO',RED],['dont',"DON'T",GREEN],['all','ALL',LIME]].map(([k,l,col])=>(
-        <button key={k} className={`pill-tab ${tab===k?'active':'inactive'}`} onClick={()=>setTab(k)} style={{borderColor:tab===k?col:BORDER,background:tab===k?col:'#141414',color:tab===k?'#000':MUTED}}>{l}</button>
+        <button key={k} className={`chrome-tab ${tab===k?'active':'inactive'}`} onClick={()=>setTab(k)} style={{color:tab===k?col:'#666'}}>
+          {l}{tab===k&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:col}}/>}
+        </button>
       ))}
     </div>
 

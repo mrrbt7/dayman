@@ -775,15 +775,14 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
   const [saving,setSaving]=useState(false);
   const [sprintId,setSprintId]=useState(habit.sprint_id||'');
   const [bucketId,setBucketId]=useState(habit.bucket_id||'');
+  const [calMonth,setCalMonth]=useState(()=>new Date().toISOString().slice(0,7));
 
   const isWeekly=habit.habit_frequency==='weekly';
-  const weekDayIdx=DAY_IDX[habit.weekly_day]??1;// for weekly habits
+  const weekDayIdx=DAY_IDX[habit.weekly_day]??1;
 
   // Calendar shows 1 month at a time; streaks go back 10000
   const today=useMemo(()=>new Date().toISOString().split('T')[0],[]);
-  // weeklyDates for streak calc (go back far); calendar is separately paginated
   const weeklyDates=useMemo(()=>getLastNOccurrences(weekDayIdx,1500),[weekDayIdx]);
-  const [calMonth,setCalMonth]=useState(()=>{const d=new Date();return d.toISOString().slice(0,7);});
 
   useEffect(()=>{
     // Load all logs (no date limit) for accurate streaks

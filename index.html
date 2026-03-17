@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#000000"/>
-<title>DAYMAN 1.7</title>
+<title>DAYMAN 1.8</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -59,7 +59,7 @@ const {useState,useEffect,useRef,useCallback,useMemo}=React;
 // ═══════════════════════════════════════════════════════════════════
 // SHARED CONSTANTS
 // ═══════════════════════════════════════════════════════════════════
-const LIME="#CAFF4C",BORDER="#2a2a2a",TEXT="#e8e8e8",MUTED="#777";
+const LIME="#CAFF4C",BORDER="#2a2a2a",TEXT="#e8e8e8",MUTED="#888";
 const RED="#FF453A",ORANGE="#FF9F0A",GREEN="#30D158",BLUE="#4f8ef7";
 const CARD="#111",CARD2="#161616",INSET="#0a0a0a";
 const NAV_H=58;
@@ -651,7 +651,7 @@ function SprintSection({user}){
         <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
           <button onClick={e=>{e.stopPropagation();setRunTarget(sp);setView('run');}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:RED,color:'#fff',fontWeight:900,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>▶ Run</button>
           <button onClick={e=>{e.stopPropagation();saveDailyState(sp.id,{done:!done});}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:done?GREEN:'#1a3a1a',color:done?'#000':GREEN,fontWeight:900,fontSize:12,cursor:'pointer',fontFamily:'inherit',border:`1px solid ${GREEN}55`}}>{done?'✓ Done':'Done!'}</button>
-          <div onClick={e=>e.stopPropagation()}><DotMenu items={[{label:'▶ Run',action:()=>{setRunTarget(sp);setView('run');}},{label:'Edit',action:()=>{setEditTarget(sp);setView('edit');}},{label:'Duplicate',action:()=>handleDuplicate(sp)},'---',{label:'Delete',danger:true,action:()=>handleDelete(sp.id,sp.name)}]}/></div>
+
         </div>
       </div>
     </div>);
@@ -737,26 +737,40 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
   const [sprintId,setSprintId]=useState(habit.sprint_id||'');
   const [bucketId,setBucketId]=useState(habit.bucket_id||'');
 
+  const isWeekly=habit.habit_frequency==='weekly';
+  const weekDayIdx=DAY_IDX[habit.weekly_day]??1;// for weekly habits
+
+  // For daily: 300-day calendar by month. For weekly: 60 occurrences of that specific weekday.
   const dates300=useMemo(()=>{const d=[];for(let i=299;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);d.push(dt.toISOString().split('T')[0]);}return d;},[]);
+  const weeklyDates=useMemo(()=>getLastNOccurrences(weekDayIdx,60),[weekDayIdx]);
   const today=dates300[299];
 
   useEffect(()=>{
-    db.from('habit_logs').select('*').eq('habit_id',habit.id).gte('log_date',dates300[0]).lte('log_date',today)
+    const from=isWeekly?weeklyDates[0]:dates300[0];
+    db.from('habit_logs').select('*').eq('habit_id',habit.id).gte('log_date',from).lte('log_date',today)
       .then(({data})=>{const m={};(data||[]).forEach(r=>{m[r.log_date]=r.value;});setLogs(m);setLoadingLogs(false);});
   },[habit.id]);
 
   const streak=useMemo(()=>{
+    if(isWeekly){
+      // count consecutive weeks
+      let s=0;
+      for(let i=weeklyDates.length-1;i>=0;i--){
+        const ds=weeklyDates[i];const val=logs[ds]??null;
+        const tracked=habit.type==='bool'?(val===1||val===-1):(val!==null&&val>0);
+        if(tracked)s++;else if(i===weeklyDates.length-1)continue;else break;
+      }
+      return s;
+    }
     let s=0;
     for(let i=0;i<300;i++){
       const dt=new Date();dt.setDate(dt.getDate()-i);const ds=dt.toISOString().split('T')[0];
       const val=logs[ds]??null;
       const tracked=habit.type==='bool'?(val===1||val===-1):(val!==null&&val>0);
-      if(tracked)s++;
-      else if(i===0)continue;
-      else break;
+      if(tracked)s++;else if(i===0)continue;else break;
     }
     return s;
-  },[logs]);
+  },[logs,isWeekly,weeklyDates]);
 
   const toggleDay=async(date)=>{
     if(date>today)return;
@@ -769,11 +783,17 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
     else{await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});}
   };
 
+  // For daily: group by month. For weekly: group by month but only show that weekday.
   const months=useMemo(()=>{
+    if(isWeekly){
+      const map={};
+      weeklyDates.forEach(d=>{const key=d.slice(0,7);if(!map[key])map[key]=[];map[key].push(d);});
+      return Object.entries(map).reverse();
+    }
     const map={};
     dates300.forEach(d=>{const key=d.slice(0,7);if(!map[key])map[key]=[];map[key].push(d);});
     return Object.entries(map).reverse();
-  },[dates300]);
+  },[dates300,weeklyDates,isWeekly]);
 
   const cellBg=(date)=>{const val=logs[date]??null;const col=habit.color||BLUE;if(habit.type==='bool'){if(val===1)return col;if(val===-1)return'#333';}else{if(val>0)return col;}return'#1a1a1a';};
   const cellIcon=(date)=>{const val=logs[date]??null;if(habit.type==='bool'){if(val===1)return'✓';if(val===-1)return'—';}else{if(val>0)return val;}return null;};
@@ -790,7 +810,7 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
     <div style={{flex:1,overflowY:'auto',padding:'0 16px 40px'}}>
       <div style={{textAlign:'center',padding:'24px 0 16px'}}>
         <div style={{fontSize:88,fontWeight:900,color:habit.color||BLUE,lineHeight:1,fontVariantNumeric:'tabular-nums'}}>{streak}</div>
-        <div style={{fontSize:13,color:MUTED,letterSpacing:2,fontWeight:700,marginTop:4,textTransform:'uppercase'}}>Day Streak 🔥</div>
+        <div style={{fontSize:13,color:MUTED,letterSpacing:2,fontWeight:700,marginTop:4,textTransform:'uppercase'}}>{isWeekly?'Week Streak':'Day Streak'}</div>
 
         {habit.scheduled_time&&<div style={{fontSize:12,color:ORANGE,marginTop:5}}>⏰ {fmtTime12(habit.scheduled_time)}</div>}
         <div style={{fontSize:11,color:'#444',marginTop:5}}>Tap any day to toggle · ✓ done · — skipped · blank missed</div>
@@ -802,6 +822,26 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
       {!loadingLogs&&months.map(([monthKey,monthDates])=>{
         const mo=new Date(monthKey+'-01T00:00:00');
         const monthLabel=mo.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+        if(isWeekly){
+          // For weekly: show one cell per occurrence (horizontal row)
+          return(<div key={monthKey} style={{marginBottom:20}}>
+            <div style={{fontSize:11,color:MUTED,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:'uppercase'}}>{monthLabel}</div>
+            <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+              {monthDates.map(date=>{
+                const isFuture=date>today;
+                const bg=cellBg(date);const icon=cellIcon(date);
+                const d=new Date(date+'T00:00:00');
+                const dayLabel_=d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+                return(<button key={date} onClick={()=>toggleDay(date)} disabled={isFuture}
+                  style={{width:48,height:52,borderRadius:8,background:bg,border:'1px solid #1f1f1f',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,cursor:isFuture?'default':'pointer',opacity:isFuture?0.12:1,fontFamily:'inherit',padding:0}}>
+                  <span style={{fontSize:9,color:bg==='#1a1a1a'?'#555':'#000'}}>{dayLabel_}</span>
+                  {icon&&<span style={{fontSize:11,fontWeight:700,color:bg==='#1a1a1a'||bg==='#333'?'#777':'#000'}}>{icon}</span>}
+                </button>);
+              })}
+            </div>
+          </div>);
+        }
+        // Daily: full calendar grid
         const firstDow=new Date(monthDates[0]+'T00:00:00').getDay();
         const padNeeded=firstDow===0?6:firstDow-1;
         const padded=Array(padNeeded).fill(null).concat(monthDates);
@@ -809,7 +849,7 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
         return(<div key={monthKey} style={{marginBottom:22}}>
           <div style={{fontSize:11,color:MUTED,fontWeight:700,letterSpacing:1,marginBottom:6,textTransform:'uppercase'}}>{monthLabel}</div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:3}}>
-            {['M','T','W','T','F','S','S'].map((d,i)=>(<div key={i} style={{textAlign:'center',fontSize:8,color:'#333',fontWeight:700,paddingBottom:2}}>{d}</div>))}
+            {['M','T','W','T','F','S','S'].map((d,i)=>(<div key={i} style={{textAlign:'center',fontSize:8,color:'#444',fontWeight:700,paddingBottom:2}}>{d}</div>))}
           </div>
           {weeks.map((week,wi)=>(<div key={wi} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:2}}>
             {week.map((date,di)=>{
@@ -819,7 +859,7 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
               return(<button key={di} onClick={()=>toggleDay(date)} disabled={isFuture}
                 style={{aspectRatio:'1',borderRadius:5,background:bg,border:isToday?`2px solid ${habit.color||BLUE}`:'1px solid #1f1f1f',display:'flex',alignItems:'center',justifyContent:'center',cursor:isFuture?'default':'pointer',opacity:isFuture?0.12:1,fontFamily:'inherit',padding:0}}>
                 {icon?<span style={{fontSize:10,fontWeight:700,color:bg==='#1a1a1a'||bg==='#333'?'#777':'#000'}}>{icon}</span>
-                  :<span style={{fontSize:9,color:'#2a2a2a'}}>{new Date(date+'T00:00:00').getDate()}</span>}
+                  :<span style={{fontSize:9,color:'#444'}}>{new Date(date+'T00:00:00').getDate()}</span>}
               </button>);
             })}
           </div>))}
@@ -961,7 +1001,12 @@ function HabitsSection({user}){
       db.from('sprints_v2').select('id,name,emoji').eq('user_id',user.id).order('created_at'),
       db.from('habit_buckets').select('*').eq('user_id',user.id).order('sort_order',{ascending:true})
     ]);
-    setHabits(h||[]);setSprints(sp||[]);setBuckets(bk||[]);
+    // Sort by scheduled_time (nulls last)
+    const sorted=(h||[]).slice().sort((a,b)=>{
+      if(a.scheduled_time&&b.scheduled_time)return a.scheduled_time.localeCompare(b.scheduled_time);
+      if(a.scheduled_time)return -1;if(b.scheduled_time)return 1;return 0;
+    });
+    setHabits(sorted);setSprints(sp||[]);setBuckets(bk||[]);
     const map={};(l||[]).forEach(r=>{map[`${r.habit_id}_${r.log_date}`]=r.value;});
     setLogs(map);setLoading(false);
   },[user.id,from60,today]);
@@ -1082,11 +1127,7 @@ function HabitsSection({user}){
     const linkedSprint=habit.sprint_id?sprints.find(s=>s.id===habit.sprint_id):null;
     const streakUnit=habit.habit_frequency==='weekly'?'wk':'d';
     return(<div style={{display:'flex',alignItems:'center',gap:2,padding:'0 16px',borderBottom:`1px solid #0d0d0d`,minHeight:48}}>
-      {/* Reorder */}
-      <div style={{display:'flex',flexDirection:'column',gap:0,flexShrink:0,width:18,marginRight:4}}>
-        <button onClick={()=>moveHabit(habit,-1,list)} disabled={idx===0} style={{background:'none',border:'none',color:idx===0?'#1e1e1e':MUTED,cursor:idx===0?'default':'pointer',fontSize:9,padding:'2px 3px',lineHeight:1}}>▲</button>
-        <button onClick={()=>moveHabit(habit,1,list)} disabled={idx===list.length-1} style={{background:'none',border:'none',color:idx===list.length-1?'#1e1e1e':MUTED,cursor:idx===list.length-1?'default':'pointer',fontSize:9,padding:'2px 3px',lineHeight:1}}>▼</button>
-      </div>
+
       {/* Name */}
       <div onClick={()=>setDetailHabit(habit)} style={{flex:1,minWidth:0,cursor:'pointer',paddingTop:5,paddingBottom:5}}>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -1094,7 +1135,7 @@ function HabitsSection({user}){
           <div style={{overflow:'hidden',flex:1}}>
             <div style={{fontSize:TASK_FS,fontWeight:600,color:done?'#444':col,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',textDecoration:done?'line-through':'none'}}>{habit.name}</div>
             <div style={{display:'flex',alignItems:'center',gap:5,marginTop:1,flexWrap:'wrap'}}>
-              {habit.scheduled_time&&<span style={{fontSize:10,color:ORANGE,fontWeight:600}}>⏰ {fmtTime12(habit.scheduled_time)}</span>}
+              {habit.scheduled_time&&<span style={{fontSize:10,color:ORANGE,fontWeight:600}}>{fmtTime12(habit.scheduled_time)}</span>}
               {linkedSprint&&<span style={{fontSize:9,color:LIME}}>⚡{linkedSprint.name}</span>}
             </div>
           </div>
@@ -1126,13 +1167,13 @@ function HabitsSection({user}){
     const dayIdx=DAY_IDX[habit.weekly_day]??1;
     const wkDates=getLastNOccurrences(dayIdx,7);
     return(<div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px 0',marginBottom:0}}>
-      <div style={{flex:1,minWidth:0}}/><div style={{width:22,flexShrink:0}}/><div style={{width:54,flexShrink:0}}/>
+      <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
       {wkDates.map((d,i)=>{
         const isThis=i===6;// most recent = this week
         const wkNum=wkDates.length-i;
         return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
           <div style={{fontSize:8,color:'#444',marginBottom:1}}>{isThis?'NOW':`-${wkNum-1}wk`}</div>
-          <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#3a3a3a',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
+          <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#666',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
         </div>);
       })}
     </div>);
@@ -1170,10 +1211,10 @@ function HabitsSection({user}){
     {/* Day headers for daily section */}
     {habTab==='today'&&(<div style={{padding:'4px 16px 0',flexShrink:0}}>
       <div style={{display:'flex',alignItems:'flex-end',gap:2}}>
-        <div style={{flex:1,minWidth:0}}/><div style={{width:22,flexShrink:0}}/><div style={{width:54,flexShrink:0}}/>
+        <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
         {dates.map(d=>(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
           <div style={{fontSize:9,color:'#555',marginBottom:1}}>{dayLabel(d)}</div>
-          <div style={{fontSize:11,fontWeight:d===today?700:400,color:d===today?TEXT:'#3a3a3a',background:d===today?'#1a1a1a':'none',borderRadius:5,width:28,height:24,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{dayNum(d)}</div>
+          <div style={{fontSize:11,fontWeight:d===today?700:400,color:d===today?TEXT:'#666',background:d===today?'#1a1a1a':'none',borderRadius:5,width:28,height:24,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{dayNum(d)}</div>
         </div>))}
       </div>
     </div>)}
@@ -1191,12 +1232,12 @@ function HabitsSection({user}){
           </div>
           {/* Weekly date header for today's weekly */}
           <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px',marginBottom:2}}>
-            <div style={{flex:1,minWidth:0}}/><div style={{width:22,flexShrink:0}}/><div style={{width:54,flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
             {getLastNOccurrences(DAY_IDX[todayAbbr]??0,7).map((d,i)=>{
               const isThis=i===6;
               return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
                 <div style={{fontSize:8,color:'#444',marginBottom:1}}>{isThis?'NOW':`-${6-i}wk`}</div>
-                <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#3a3a3a',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
+                <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#666',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
               </div>);
             })}
           </div>
@@ -1221,12 +1262,12 @@ function HabitsSection({user}){
               <div style={{fontSize:11,fontWeight:700,color:MUTED,letterSpacing:1,textTransform:'uppercase'}}>{DAY_FULL_MAP[day]||day}</div>
             </div>
             <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px',marginBottom:2}}>
-              <div style={{flex:1,minWidth:0}}/><div style={{width:22,flexShrink:0}}/><div style={{width:54,flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
               {getLastNOccurrences(DAY_IDX[day]??0,7).map((d,i)=>{
                 const isThis=i===6;
                 return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
                   <div style={{fontSize:8,color:'#444',marginBottom:1}}>{isThis?'NOW':`-${6-i}wk`}</div>
-                  <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#3a3a3a',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
+                  <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#666',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
                 </div>);
               })}
             </div>
@@ -1425,35 +1466,53 @@ function CountdownSection({user}){
     <div style={{flex:1,overflowY:'auto',padding:'4px 16px',paddingBottom:NAV_H+12}}>
       {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:40}}><Spinner size={22} color={BLUE}/></div>}
       {!loading&&displayList.length===0&&(<div style={{textAlign:'center',padding:'60px 0',color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>{mainTab==='countup'?'⏱':'⏳'}</div><div style={{fontSize:14}}>No {mainTab==='countup'?'count-up events':mainTab+' events'}</div></div>)}
-      {displayList.map((item,i)=>{
+      {!loading&&(()=>{
         const isCountUp=mainTab==='countup';
-        const ci=CD_CATS.find(c=>c.key===item.category)||CD_CATS[0];
-        const isToday=item._days===0;const isPast=item._days<0&&!isCountUp;
-        const color=isCountUp?'#22d3ee':(CD_COLORS[item.category]||BLUE);
-        const daysVal=isCountUp?item._since:Math.abs(item._days);
-        const isOverdue=!isCountUp&&item._days<0;
-        const yrsLabel=item.first_date?(isCountUp?yearsFrom(item.first_date):yearsUntilNext(item.first_date)):null;
-        return(<div key={item.id} style={{background:isOverdue?'#180808':'#141414',border:`1px solid ${isToday?'rgba(247,201,79,0.3)':isOverdue?RED+'33':BORDER}`,borderRadius:16,padding:'15px 16px',marginBottom:8,display:'flex',alignItems:'center',gap:14,cursor:'pointer',animation:'fadeIn .2s ease both',animationDelay:`${i*25}ms`}} onClick={()=>setDetailItem(item)}>
-          <div style={{width:44,height:44,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,background:color+'1a',flexShrink:0}}>{isCountUp?'⏱':ci.emoji}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:TASK_FS,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isOverdue?RED:'#e8e8e8'}}>{item.name}</div>
-            <div style={{display:'flex',alignItems:'center',gap:6,marginTop:2,flexWrap:'wrap'}}>
-              {yrsLabel!==null&&<span style={{fontSize:12,fontWeight:700,color:color}}>{isCountUp?`${yrsLabel} yrs`:`→ turns ${yrsLabel}`}</span>}
-              <span style={{fontSize:11,color:MUTED}}>
-                {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-                {item.recurring&&<span style={{marginLeft:5,color:BLUE}}>↻ {item.recurring}</span>}
-                {isOverdue&&<span style={{marginLeft:5,color:RED,fontWeight:700}}>OVERDUE</span>}
-              </span>
+        // Build sectioned list for non-countup tabs
+        const renderItem=(item,i)=>{
+          const ci=CD_CATS.find(c=>c.key===item.category)||CD_CATS[0];
+          const isToday_=item._days===0;const isPast=item._days<0&&!isCountUp;
+          const color=isCountUp?'#22d3ee':(CD_COLORS[item.category]||BLUE);
+          const daysVal=isCountUp?item._since:Math.abs(item._days);
+          const isOverdue_=!isCountUp&&item._days<0;
+          const yrsLabel=item.first_date?(isCountUp?yearsFrom(item.first_date):yearsUntilNext(item.first_date)):null;
+          return(<div key={item.id} style={{background:isOverdue_?'#180808':'#141414',border:`1px solid ${isToday_?'rgba(247,201,79,0.3)':isOverdue_?RED+'33':BORDER}`,borderRadius:16,padding:'14px 15px',marginBottom:8,display:'flex',alignItems:'center',gap:14,cursor:'pointer'}} onClick={()=>setDetailItem(item)}>
+            <div style={{width:40,height:40,borderRadius:11,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,background:color+'1a',flexShrink:0}}>{isCountUp?'⏱':ci.emoji}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:TASK_FS,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isOverdue_?RED:'#e8e8e8'}}>{item.name}</div>
+              <div style={{display:'flex',alignItems:'center',gap:6,marginTop:2,flexWrap:'wrap'}}>
+                {yrsLabel!==null&&<span style={{fontSize:12,fontWeight:700,color:color}}>{isCountUp?`${yrsLabel} yrs`:`→ turns ${yrsLabel}`}</span>}
+                <span style={{fontSize:11,color:MUTED}}>
+                  {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                  {item.recurring&&<span style={{marginLeft:5,color:BLUE}}>↻ {item.recurring}</span>}
+                </span>
+              </div>
             </div>
-          </div>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
-            {isToday&&!isCountUp?<div style={{color:'#f7c94f',fontWeight:700,fontSize:18}}>Today</div>:<>
-              <div style={{fontSize:32,fontWeight:700,lineHeight:1,fontFamily:'monospace',color:isOverdue?RED:isPast?MUTED:color}}>{daysVal}</div>
-              <div style={{fontSize:10,color:MUTED,textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:500}}>{isCountUp?'Days Since':isOverdue?'Days Overdue':'Days Until'}</div>
-            </>}
-          </div>
-        </div>);
-      })}
+            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
+              {isToday_&&!isCountUp?<div style={{color:'#f7c94f',fontWeight:700,fontSize:16}}>Today</div>:<>
+                <div style={{fontSize:30,fontWeight:700,lineHeight:1,fontFamily:'monospace',color:isOverdue_?RED:isPast?MUTED:color}}>{daysVal}</div>
+                <div style={{fontSize:10,color:MUTED,textTransform:'uppercase',letterSpacing:'0.04em',fontWeight:500}}>{isCountUp?'Days Since':isOverdue_?'Overdue':'Days Until'}</div>
+              </>}
+            </div>
+          </div>);
+        };
+        if(mainTab==='upcoming'){
+          // Sections: Overdue, Today, Upcoming
+          const overdue=displayList.filter(i=>i._days<0);
+          const todayItems=displayList.filter(i=>i._days===0);
+          const upcoming_=displayList.filter(i=>i._days>0);
+          const SectionLabel=({label,color:col})=>(<div style={{display:'flex',alignItems:'center',gap:6,padding:'8px 0 4px'}}>
+            <div style={{width:5,height:5,borderRadius:'50%',background:col,flexShrink:0}}/>
+            <span style={{fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:col}}>{label}</span>
+          </div>);
+          return(<>
+            {overdue.length>0&&<><SectionLabel label="Overdue" color={RED}/>{overdue.map((item,i)=>renderItem(item,i))}</>}
+            {todayItems.length>0&&<><SectionLabel label="Today" color="#f7c94f"/>{todayItems.map((item,i)=>renderItem(item,i))}</>}
+            {upcoming_.length>0&&<><SectionLabel label="Upcoming" color={BLUE}/>{upcoming_.map((item,i)=>renderItem(item,i))}</>}
+          </>);
+        }
+        return displayList.map((item,i)=>renderItem(item,i));
+      })()}
     </div>
 
     {sheet&&(<CDEventSheet item={sheet==='new'?null:sheet} onClose={()=>setSheet(null)} onSave={handleSave} onDelete={handleDelete} defaultDirection={mainTab==='countup'?'countup':'countdown'}/>)}
@@ -1792,7 +1851,7 @@ function SidebarSection({user,onSignOut}){
         </div>
       </div>
       <div style={{background:'#111',borderRadius:12,border:`1px solid ${BORDER}`,padding:'14px 16px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><span style={{color:MUTED,fontSize:13}}>Version</span><span style={{fontSize:13,fontWeight:700,color:LIME}}>DAYMAN 1.7</span></div>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><span style={{color:MUTED,fontSize:13}}>Version</span><span style={{fontSize:13,fontWeight:700,color:LIME}}>DAYMAN 1.8</span></div>
         <div style={{display:'flex',justifyContent:'space-between'}}><span style={{color:MUTED,fontSize:13}}>Database</span><span style={{fontSize:13,color:TEXT}}>MR Supabase</span></div>
       </div>
     </div>

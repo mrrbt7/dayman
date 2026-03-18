@@ -868,8 +868,7 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
 
         {habit.scheduled_time&&<div style={{fontSize:12,color:ORANGE,marginTop:5}}>⏰ {fmtTime12(habit.scheduled_time)}</div>}
         {habit.link&&<a href={habit.link} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:BLUE,marginTop:4,display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:280}}>{habit.link}</a>}
-        {habit.notes&&<button onClick={()=>setHabitNotesExpanded(true)} style={{marginTop:6,padding:'6px 12px',borderRadius:8,background:'#111',border:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontFamily:'inherit',fontSize:11,maxWidth:280,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'block'}}>📝 {habit.notes.split('
-')[0]}</button>}
+        {habit.notes&&<button onClick={()=>setHabitNotesExpanded(true)} style={{marginTop:6,padding:'6px 12px',borderRadius:8,background:'#111',border:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontFamily:'inherit',fontSize:11,maxWidth:280,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'block'}}>📝 {habit.notes.split('\n')[0]}</button>}
         <div style={{fontSize:11,color:'#444',marginTop:5}}>Tap any day to toggle · ✓ done · — skipped · blank missed</div>
       </div>
 
@@ -1606,6 +1605,14 @@ function CountdownSection({user,resetHour=4}){
   </div>);
 }
 
+// TimeBox for countdown detail — defined outside to avoid Babel inline-component issues
+function TimeBox({value,label,col}){
+  return(<div style={{background:'#141414',borderRadius:16,padding:'20px 0',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,border:'1px solid #2a2a2a'}}>
+    <div style={{fontSize:56,fontWeight:900,lineHeight:1,fontVariantNumeric:'tabular-nums',color:col||BLUE}}>{value}</div>
+    <div style={{fontSize:13,color:MUTED,fontWeight:500,letterSpacing:1}}>{label}</div>
+  </div>);
+}
+
 function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved}){
   const [item,setItem]=useState(itemProp);
   const isCountUp=item.direction==='countup';
@@ -1652,11 +1659,6 @@ function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved})
     setItem(updated);setSaving(false);if(onSaved)onSaved();
   };
 
-  const TimeBox=({value,label})=>(<div style={{background:'#141414',borderRadius:16,padding:'20px 0',flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,border:`1px solid #2a2a2a`}}>
-    <div style={{fontSize:56,fontWeight:900,lineHeight:1,fontVariantNumeric:'tabular-nums',color:bigColor}}>{value}</div>
-    <div style={{fontSize:13,color:MUTED,fontWeight:500,letterSpacing:1}}>{label}</div>
-  </div>);
-
   return(<div style={{position:'fixed',inset:0,background:'#000',zIndex:400,display:'flex',flexDirection:'column'}}>
     {/* Header */}
     <div className="section-header">
@@ -1678,13 +1680,13 @@ function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved})
           <>
             {/* Stacked boxes like the screenshot */}
             <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
-              {yrs>0&&<TimeBox value={String(yrs).padStart(2,'0')} label={`year${yrs!==1?'s':''}`}/>}
-              {(yrs>0||mos>0)&&<TimeBox value={String(mos).padStart(2,'0')} label={`month${mos!==1?'s':''}`}/>}
-              {(yrs>0||mos>0||remDays>0)&&<TimeBox value={String(remDays).padStart(2,'0')} label={`day${remDays!==1?'s':''}`}/>}
-              {yrs===0&&<TimeBox value={String(totalDays).padStart(2,'0')} label={isOverdue?'days overdue':isCountUp?'days since':'days'}/>}
-              <TimeBox value={pad(hh)} label="hours"/>
-              <TimeBox value={pad(mm)} label="minutes"/>
-              <TimeBox value={pad(ss)} label="seconds"/>
+              {yrs>0&&<TimeBox col={bigColor} value={String(yrs).padStart(2,'0')} label={`year${yrs!==1?'s':''}`}/>}
+              {(yrs>0||mos>0)&&<TimeBox col={bigColor} value={String(mos).padStart(2,'0')} label={`month${mos!==1?'s':''}`}/>}
+              {(yrs>0||mos>0||remDays>0)&&<TimeBox col={bigColor} value={String(remDays).padStart(2,'0')} label={`day${remDays!==1?'s':''}`}/>}
+              {yrs===0&&<TimeBox col={bigColor} value={String(totalDays).padStart(2,'0')} label={isOverdue?'days overdue':isCountUp?'days since':'days'}/>}
+              <TimeBox col={bigColor} value={pad(hh)} label="hours"/>
+              <TimeBox col={bigColor} value={pad(mm)} label="minutes"/>
+              <TimeBox col={bigColor} value={pad(ss)} label="seconds"/>
             </div>
             <div style={{fontSize:12,color:MUTED,letterSpacing:1,textTransform:'uppercase',marginBottom:12}}>{isCountUp?'elapsed':'remaining'}</div>
           </>

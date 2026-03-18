@@ -731,6 +731,12 @@ function SprintSection({user,resetHour:resetHourProp=4}){
         <div style={{fontSize:10,color:MUTED,letterSpacing:3,fontWeight:800,marginBottom:8,display:'flex',alignItems:'center',gap:6}}><span>{SECTION_EMOJI[sec.label]}</span><span>{sec.label}</span></div>
         {sec.items.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
       </div>))}
+      {!loadingList&&sprintTab==='today'&&doneSprints.length>0&&(<div style={{marginTop:16}}>
+        <div style={{fontSize:10,color:MUTED,letterSpacing:3,fontWeight:800,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+          <span style={{color:GREEN}}>✓</span><span style={{color:GREEN}}>COMPLETED ({doneCount})</span>
+        </div>
+        {doneSprints.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
+      </div>)}
       {!loadingList&&sprintTab!=='today'&&tabList.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
     </div>
 
@@ -780,6 +786,7 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
   const [habitSubtitle,setHabitSubtitle]=useState(habit.subtitle||'');
   const [habitLink,setHabitLink]=useState(habit.link||'');
   const [habitNotes,setHabitNotes]=useState(habit.notes||'');
+  const [habitNotesExpanded,setHabitNotesExpanded]=useState(false);
   const [calMonth,setCalMonth]=useState(()=>localDateStr().slice(0,7));
 
   const isWeekly=habit.habit_frequency==='weekly';
@@ -1045,6 +1052,7 @@ function HabitsSection({user,resetHour=4}){
   const [detailHabit,setDetailHabit]=useState(null);
   const [showBucketMgr,setShowBucketMgr]=useState(false);
   const [habitTypeFilter,setHabitTypeFilter]=useState('all');
+  const [bucketFilter,setBucketFilter]=useState('all');// 'all' or bucket id
   const [habTab,setHabTabRaw]=useState(()=>{try{return localStorage.getItem(HABIT_FREQ_LS)||'today';}catch{return'today';}});
   const [hideCompleted,setHideCompletedRaw]=useState(()=>{try{return localStorage.getItem(HABIT_HIDE_LS)==='1';}catch{return false;}});
   const setHabTab=v=>{setHabTabRaw(v);try{localStorage.setItem(HABIT_FREQ_LS,v);}catch{}};
@@ -1185,13 +1193,33 @@ function HabitsSection({user,resetHour=4}){
   const todayAbbr=getTodayAbbr();
   const dailyHabits=habits.filter(h=>!h.habit_frequency||h.habit_frequency==='daily');
   const weeklyHabits=habits.filter(h=>h.habit_frequency==='weekly');
+  // Weekly habits that were due this week but not done/skipped yet
+  // Determine which weekdays have already passed this week (not including today — today's are shown separately)
   const todayWeekly=weeklyHabits.filter(h=>h.weekly_day===todayAbbr);
+  const overdueWeekly=useMemo(()=>{
+    const now=new Date();const dow=now.getDay();// 0=Sun..6=Sat
+    const DAY_TO_DOW={SUN:0,MON:1,TUE:2,WED:3,THU:4,FRI:5,SAT:6};
+    return weeklyHabits.filter(h=>{
+      if(h.weekly_day===todayAbbr)return false;// today's handled separately
+      const hDow=DAY_TO_DOW[h.weekly_day]??-1;
+      // Is this day earlier in the current week (Mon-based)?
+      const todayDow_=dow===0?6:dow-1;// Mon=0..Sun=6
+      const hDow_=hDow===0?6:hDow-1;
+      if(hDow_>=todayDow_)return false;// hasn't happened yet this week
+      // Check if it was done that day this week
+      const daysAgo=todayDow_-hDow_;
+      const dt=new Date();dt.setDate(dt.getDate()-daysAgo);
+      const ds=localDateStr(dt);
+      const val=logs[h.id+'_'+ds]??null;
+      return val===null;// not done and not skipped
+    });
+  },[weeklyHabits,todayAbbr,logs]);
   const upcomingWeeklyDays=DAY_ABBR.filter(d=>{if(d===todayAbbr)return false;return weeklyHabits.some(h=>h.weekly_day===d);});
   const completedDaily=dailyHabits.filter(h=>isDoneToday(h)).length;
   const completedToday=completedDaily+todayWeekly.filter(h=>isDoneToday(h)).length;
   const totalToday=dailyHabits.length+todayWeekly.length;
 
-  const applyFilters=list=>(hideCompleted?list.filter(h=>!isDoneToday(h)):list).filter(h=>habitTypeFilter==='all'||h.type===habitTypeFilter);
+  const applyFilters=list=>(hideCompleted?list.filter(h=>!isDoneToday(h)):list).filter(h=>(habitTypeFilter==='all'||h.type===habitTypeFilter)&&(bucketFilter==='all'||h.bucket_id===bucketFilter));
 
   // Habit row component (defined outside render to avoid recreation)
   const HabitRow=({habit,idx,list,cells,dateLabel})=>{
@@ -1277,7 +1305,8 @@ function HabitsSection({user,resetHour=4}){
       {[['all','All'],['bool','✓'],['count','#']].map(([k,l])=>(
         <button key={k} className={`pill-tab ${habitTypeFilter===k?'active':'inactive'}`} onClick={()=>setHabitTypeFilter(k)} style={{borderColor:habitTypeFilter===k?GREEN:BORDER,background:habitTypeFilter===k?GREEN:'#141414',color:habitTypeFilter===k?'#000':MUTED}}>{l}</button>
       ))}
-      {buckets.length>0&&buckets.map(bk=>(<button key={bk.id} className="pill-tab inactive" style={{borderColor:BORDER,background:'#141414',color:bk.color||MUTED}}>{bk.emoji} {bk.name}</button>))}
+      {bucketFilter!=='all'&&<button className="pill-tab active" onClick={()=>setBucketFilter('all')} style={{borderColor:GREEN,background:GREEN,color:'#000'}}>All</button>}
+      {buckets.length>0&&buckets.map(bk=>(<button key={bk.id} className={`pill-tab ${bucketFilter===bk.id?'active':'inactive'}`} onClick={()=>setBucketFilter(prev=>prev===bk.id?'all':bk.id)} style={{borderColor:bucketFilter===bk.id?bk.color||GREEN:BORDER,background:bucketFilter===bk.id?bk.color||GREEN:'#141414',color:bucketFilter===bk.id?'#000':bk.color||MUTED}}>{bk.emoji} {bk.name}</button>))}
     </div>
 
 
@@ -1287,7 +1316,35 @@ function HabitsSection({user,resetHour=4}){
 
       {/* TODAY TAB */}
       {!loading&&habTab==='today'&&(<>
-        {/* Today's weekly habits first */}
+        {/* Overdue weekly habits (from earlier this week, not done) */}
+        {overdueWeekly.length>0&&(<>
+          <div style={{padding:'8px 16px 4px',display:'flex',alignItems:'center',gap:8}}>
+            <div style={{width:6,height:6,borderRadius:'50%',background:RED,flexShrink:0}}/>
+            <div style={{fontSize:10,color:RED,fontWeight:700,letterSpacing:1,textTransform:'uppercase'}}>Overdue Weekly</div>
+          </div>
+          {overdueWeekly.map((habit,idx,arr)=>{
+            const streak=getStreak(habit);const done=isDoneToday(habit);const col=habit.color||BLUE;
+            const linkedSprint=habit.sprint_id?sprints.find(s=>s.id===habit.sprint_id):null;
+            return(<div key={habit.id} style={{display:'flex',alignItems:'center',gap:2,padding:'0 16px',borderBottom:'1px solid #0d0d0d',minHeight:48,background:'#0d0000'}}>
+              <div onClick={()=>setDetailHabit(habit)} style={{flex:1,minWidth:0,cursor:'pointer',paddingTop:5,paddingBottom:5}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  {habit.emoji?<span style={{fontSize:16,lineHeight:1,flexShrink:0}}>{habit.emoji}</span>:<div style={{width:7,height:7,borderRadius:'50%',background:col,flexShrink:0}}/>}
+                  <div style={{overflow:'hidden',flex:1}}>
+                    <div style={{fontSize:TASK_FS,fontWeight:600,color:RED,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{habit.name}</div>
+                    <div style={{fontSize:10,color:MUTED}}>{DAY_FULL_MAP[habit.weekly_day]||habit.weekly_day}</div>
+                  </div>
+                </div>
+              </div>
+              <button onClick={async e=>{e.stopPropagation();const DAY_TO_DOW2={SUN:0,MON:1,TUE:2,WED:3,THU:4,FRI:5,SAT:6};const hd=DAY_TO_DOW2[habit.weekly_day]??0;const now2=new Date();const dow2=now2.getDay();const tod2=dow2===0?6:dow2-1;const hd2=hd===0?6:hd-1;const daysAgo2=tod2-hd2;const dt2=new Date();dt2.setDate(dt2.getDate()-daysAgo2);const ds2=localDateStr(dt2);await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:ds2,value:-1},{onConflict:'habit_id,log_date'});load();}} style={{padding:'5px 10px',borderRadius:7,border:`1px solid #555`,background:'transparent',color:MUTED,fontSize:11,cursor:'pointer',fontFamily:'inherit',flexShrink:0,marginRight:6}}>Skip</button>
+              <div style={{width:54,flexShrink:0,textAlign:'right',paddingRight:4}}>
+                {streak>0&&<div style={{fontSize:11,fontWeight:700,color:col,lineHeight:1.2,textAlign:'right'}}><div style={{fontSize:13}}>{streak}</div><div style={{fontSize:8,opacity:0.8}}>weeks</div></div>}
+              </div>
+              {weeklyCells(habit)}
+            </div>);
+          })}
+          <div style={{height:1,background:'#1a0000',margin:'4px 0'}}/>
+        </>)}
+        {/* Today's weekly habits */}
         {todayWeekly.length>0&&(<>
           <div style={{padding:'8px 16px 2px',display:'flex',alignItems:'center',gap:8}}>
             <div style={{fontSize:10,color:GREEN,fontWeight:700,letterSpacing:1,textTransform:'uppercase'}}>{DAY_FULL_MAP[todayAbbr]||todayAbbr}</div>

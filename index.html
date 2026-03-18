@@ -2270,9 +2270,155 @@ function BrandsSection({user}){
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// NOW SECTION — everything due today, sorted by time
+// ═══════════════════════════════════════════════════════════════════
+function NowSection({user,resetHour=4,onNavigate}){
+  const [items,setItems]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const today=useMemo(()=>localDateStr(),[]);
+  const todayDow=new Date().getDay();// 0=Sun..6=Sat
+  const todayAbbr_=['SUN','MON','TUE','WED','THU','FRI','SAT'][todayDow];
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const[{data:sprints},{data:habits},{data:habitLogs},{data:countdowns},{data:boardMem}]=await Promise.all([
+      db.from('sprints_v2').select('*').eq('user_id',user.id),
+      db.from('habits').select('*').eq('user_id',user.id),
+      db.from('habit_logs').select('*').eq('user_id',user.id).eq('log_date',today),
+      db.from('countdowns').select('*').eq('user_id',user.id),
+      db.from('board_members').select('board_id,boards(id)').eq('user_id',user.id),
+    ]);
+
+    const all=[];
+
+    // SPRINTS — today's uncompleted
+    (sprints||[]).forEach(sp=>{
+      const ds=resolveDS(sp.daily_state,resetHour);
+      if(ds.done)return;
+      const isToday=!sp.frequency_days||sp.frequency_days.split(',').includes(todayAbbr_);
+      if(!isToday)return;
+      all.push({id:'sp_'+sp.id,type:'sprint',label:sp.name,emoji:sp.emoji||'⚡',time:sp.scheduled_time||null,color:LIME,raw:sp});
+    });
+
+    // HABITS — today's due daily + today's weekly
+    const logSet=new Set((habitLogs||[]).map(l=>l.habit_id));
+    (habits||[]).forEach(h=>{
+      const isDone=logSet.has(h.id);if(isDone)return;
+      const isDaily=!h.habit_frequency||h.habit_frequency==='daily';
+      const isWeeklyToday=h.habit_frequency==='weekly'&&h.weekly_day===todayAbbr_;
+      if(!isDaily&&!isWeeklyToday)return;
+      all.push({id:'hb_'+h.id,type:'habit',label:h.name,emoji:h.emoji||null,time:h.scheduled_time||null,color:h.color||GREEN,subtitle:isWeeklyToday?'Weekly':'Daily',raw:h});
+    });
+
+    // COUNTDOWNS — due today or overdue
+    (countdowns||[]).forEach(cd=>{
+      if(cd.direction==='countup')return;
+      const days=daysUntil(cd.target_date);
+      if(days>0)return;// future
+      const label=days===0?'Today':days<0?`${Math.abs(days)}d overdue`:'';
+      const CD_CI=CD_CATS.find(c=>c.key===cd.category)||CD_CATS[0];
+      all.push({id:'cd_'+cd.id,type:'countdown',label:cd.name,emoji:cd.emoji||CD_CI.emoji,time:null,color:days===0?'#f7c94f':RED,subtitle:label,raw:cd});
+    });
+
+    // FREQ — due or overdue tasks
+    const boardIds=(boardMem||[]).map(m=>m.boards?.id).filter(Boolean);
+    if(boardIds.length){
+      const{data:tasks}=await db.from('tasks').select('*').in('board_id',boardIds).eq('done',false).not('frequency','is',null).neq('frequency','');
+      (tasks||[]).forEach(t=>{
+        const fd=freqDays(t.frequency);if(fd===null)return;
+        const cl=t.completion_log||[];
+        const sd=daysSinceDone(cl);
+        if(sd===null||sd<fd)return;// not yet due
+        const over=sd-fd;
+        all.push({id:'fq_'+t.id,type:'freq',label:t.title,emoji:'🔁',time:t.time?t.time.slice(0,5):null,color:over>0?RED:ORANGE,subtitle:over>0?`${over}d overdue`:'Due today',raw:t});
+      });
+    }
+
+    // Sort: items with time first (by time asc), then no-time items
+    all.sort((a,b)=>{
+      if(a.time&&b.time)return a.time.localeCompare(b.time);
+      if(a.time)return -1;if(b.time)return 1;
+      return 0;
+    });
+
+    setItems(all);setLoading(false);
+  },[user.id,today,resetHour,todayAbbr_]);
+
+  useEffect(()=>{load();},[load]);
+
+  // Group by time section
+  const sections=useMemo(()=>{
+    const map={};
+    items.forEach(item=>{
+      const sec=item.time?getTimeSection(item.time):'NO TIME';
+      if(!map[sec])map[sec]=[];
+      map[sec].push(item);
+    });
+    return SECTION_ORDER.filter(s=>map[s]?.length).map(s=>({label:s,emoji:SECTION_EMOJI[s],items:map[s]}));
+  },[items]);
+
+  const TYPE_BADGE={
+    sprint:{label:'SPRINT',color:LIME},
+    habit:{label:'HABIT',color:GREEN},
+    countdown:{label:'CNTDWN',color:BLUE},
+    freq:{label:'FREQ',color:ORANGE},
+  };
+  const TYPE_TAB={sprint:'sprint',habit:'habits',countdown:'countdown',freq:'freq'};
+
+  return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
+    <div className="section-header">
+      <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:'#f7c94f'}}>☀</span> NOW</span></div>
+      <button onClick={load} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:7,padding:'4px 10px',cursor:'pointer',color:MUTED,fontSize:11,fontFamily:'inherit'}}>↻</button>
+    </div>
+    <div style={{flex:1,overflowY:'auto',paddingBottom:NAV_H+12}}>
+      {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:60}}><Spinner size={22} color={'#f7c94f'}/></div>}
+      {!loading&&items.length===0&&(<div style={{textAlign:'center',padding:'80px 20px',color:MUTED}}>
+        <div style={{fontSize:48,marginBottom:16}}>☀</div>
+        <div style={{fontSize:17,fontWeight:700,color:TEXT,marginBottom:8}}>All clear</div>
+        <div style={{fontSize:13}}>Nothing due today</div>
+      </div>)}
+      {!loading&&sections.map(sec=>(<div key={sec.label} style={{marginBottom:8}}>
+        {/* Section header */}
+        <div style={{padding:'12px 16px 6px',display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontSize:16}}>{sec.emoji}</span>
+          <span style={{fontSize:10,fontWeight:800,letterSpacing:2,color:MUTED,textTransform:'uppercase'}}>{sec.label}</span>
+        </div>
+        {sec.items.map(item=>{
+          const badge=TYPE_BADGE[item.type];
+          return(<button key={item.id} onClick={()=>onNavigate(TYPE_TAB[item.type])} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:`1px solid #0a0a0a`,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',transition:'background .1s'}} onMouseEnter={e=>e.currentTarget.style.background='#0c0c0c'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            {/* Left: time or spacer */}
+            <div style={{width:52,flexShrink:0,textAlign:'right'}}>
+              {item.time
+                ?<span style={{fontSize:13,fontWeight:700,color:item.color,fontVariantNumeric:'tabular-nums'}}>{fmtTime12(item.time)}</span>
+                :<span style={{fontSize:11,color:'#333'}}>—</span>}
+            </div>
+            {/* Emoji/icon */}
+            <div style={{width:32,height:32,borderRadius:8,background:item.color+'22',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:17}}>
+              {item.emoji||<div style={{width:10,height:10,borderRadius:'50%',background:item.color}}/>}
+            </div>
+            {/* Name + subtitle */}
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:TASK_FS,fontWeight:600,color:TEXT,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.label}</div>
+              {item.subtitle&&<div style={{fontSize:10,color:item.color,marginTop:1,fontWeight:600}}>{item.subtitle}</div>}
+            </div>
+            {/* Type badge */}
+            <div style={{flexShrink:0,padding:'3px 7px',borderRadius:5,border:`1px solid ${badge.color}33`,background:badge.color+'11'}}>
+              <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:badge.color}}>{badge.label}</span>
+            </div>
+            {/* Arrow */}
+            <span style={{color:'#333',fontSize:14,flexShrink:0}}>›</span>
+          </button>);
+        })}
+      </div>))}
+    </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // BOTTOM NAV
 // ═══════════════════════════════════════════════════════════════════
 const TABS=[
+  {key:'now',label:'NOW',icon:'☀',color:'#f7c94f'},
   {key:'habits',label:'HABITS',icon:'✓',color:GREEN},
   {key:'sprint',label:'SPRINT',icon:'⚡',color:LIME},
   {key:'countdown',label:'⏳',icon:'⏳',color:BLUE},
@@ -2311,6 +2457,7 @@ function App(){
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
     <div style={{flex:1,overflow:'hidden',position:'relative'}}>
+      <div style={{display:tab==='now'?'block':'none',height:'100%'}}>{user&&<NowSection user={user} resetHour={resetHour} onNavigate={t=>setTab(t)}/>}</div>
       <div style={{display:tab==='sprint'?'block':'none',height:'100%'}}>{user&&<SprintSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='habits'?'block':'none',height:'100%'}}>{user&&<HabitsSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='countdown'?'block':'none',height:'100%'}}>{user&&<CountdownSection user={user} resetHour={resetHour}/>}</div>

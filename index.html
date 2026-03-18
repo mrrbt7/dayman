@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#000000"/>
-<title>DAYMAN 2.1</title>
+<title>DAYMAN 2.2</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -309,7 +309,7 @@ function SprintDetail({sprint,settings,isDone,onClose,onRun,onEdit,onDuplicate,o
         {activeTasks.length===0?'No tasks to run':`▶ Run · ${fmtSecs(totalSecs(activeTasks))}`}
       </button>
       <div style={{display:'flex',gap:8}}>
-        <button onClick={()=>onToggleDone(!isDone)} style={{flex:2,padding:'11px',borderRadius:10,border:`1px solid ${isDone?GREEN+'55':BORDER}`,background:isDone?'#0a1f0a':'transparent',color:isDone?GREEN:MUTED,fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>
+        <button onClick={()=>{onToggleDone(!isDone);if(!isDone)onClose();}} style={{flex:2,padding:'11px',borderRadius:10,border:`1px solid ${isDone?GREEN+'55':BORDER}`,background:isDone?'#0a1f0a':'transparent',color:isDone?GREEN:MUTED,fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>
           {isDone?'✓ Done Today':'◯ Mark Done'}
         </button>
         <button onClick={()=>onEdit(sprint)} style={{flex:1,padding:'11px',borderRadius:10,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>✏️ Edit</button>
@@ -777,6 +777,7 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
   const [saving,setSaving]=useState(false);
   const [sprintId,setSprintId]=useState(habit.sprint_id||'');
   const [bucketId,setBucketId]=useState(habit.bucket_id||'');
+  const [habitSubtitle,setHabitSubtitle]=useState(habit.subtitle||'');
   const [habitLink,setHabitLink]=useState(habit.link||'');
   const [habitNotes,setHabitNotes]=useState(habit.notes||'');
   const [calMonth,setCalMonth]=useState(()=>localDateStr().slice(0,7));
@@ -851,12 +852,12 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
   const cellBg=(date)=>{const val=logs[date]??null;const col=habit.color||BLUE;if(habit.type==='bool'){if(val===1)return col;if(val===-1)return'#333';}else{if(val>0)return col;}return'#1a1a1a';};
   const cellIcon=(date)=>{const val=logs[date]??null;if(habit.type==='bool'){if(val===1)return'✓';if(val===-1)return'—';}else{if(val>0)return val;}return null;};
 
-  const save=async()=>{if(!name.trim())return;setSaving(true);await onSave(habit.id,{name:name.trim(),scheduled_time:time||null,color,emoji:emoji_||null,sprint_id:sprintId||null,bucket_id:bucketId||null,link:habitLink||null,notes:habitNotes||null});setSaving(false);};
+  const save=async()=>{if(!name.trim())return;setSaving(true);await onSave(habit.id,{name:name.trim(),subtitle:habitSubtitle||null,scheduled_time:time||null,color,emoji:emoji_||null,sprint_id:sprintId||null,bucket_id:bucketId||null,link:habitLink||null,notes:habitNotes||null});setSaving(false);};
 
   return(<div style={{position:'fixed',inset:0,background:'#000',zIndex:500,display:'flex',flexDirection:'column',overflow:'hidden'}}>
     <div className="section-header">
       <button onClick={onClose} style={{background:'none',border:'none',color:MUTED,fontSize:26,cursor:'pointer',lineHeight:1,marginLeft:-4}}>‹</button>
-      <div style={{flex:1,fontWeight:900,fontSize:16,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:habit.color||BLUE}}>{habit.emoji?habit.emoji+' ':''}{habit.name}</div>
+      <div style={{flex:1,minWidth:0}}><div style={{fontWeight:900,fontSize:16,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:habit.color||BLUE}}>{habit.emoji?habit.emoji+' ':''}{habit.name}</div>{habit.subtitle&&<div style={{fontSize:11,color:MUTED,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{habit.subtitle}</div>}</div>
       <button onClick={()=>{if(window.confirm('Delete habit and all history?'))onDelete(habit.id);}} style={{background:'none',border:'none',color:'#ef444488',cursor:'pointer',fontSize:13,fontFamily:'inherit',padding:'4px 8px'}}>Delete</button>
     </div>
 
@@ -867,7 +868,8 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
 
         {habit.scheduled_time&&<div style={{fontSize:12,color:ORANGE,marginTop:5}}>⏰ {fmtTime12(habit.scheduled_time)}</div>}
         {habit.link&&<a href={habit.link} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:BLUE,marginTop:4,display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:280}}>{habit.link}</a>}
-        {habit.notes&&<div style={{fontSize:12,color:MUTED,marginTop:4,lineHeight:1.5,maxWidth:320,textAlign:'left',padding:'6px 12px',background:'#111',borderRadius:8,whiteSpace:'pre-wrap'}}>{habit.notes}</div>}
+        {habit.notes&&<button onClick={()=>setHabitNotesExpanded(true)} style={{marginTop:6,padding:'6px 12px',borderRadius:8,background:'#111',border:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontFamily:'inherit',fontSize:11,maxWidth:280,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'block'}}>📝 {habit.notes.split('
+')[0]}</button>}
         <div style={{fontSize:11,color:'#444',marginTop:5}}>Tap any day to toggle · ✓ done · — skipped · blank missed</div>
       </div>
 
@@ -930,7 +932,8 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
 
       <div style={{borderTop:`1px solid ${BORDER}`,paddingTop:20}}>
         <div style={{fontSize:10,color:MUTED,letterSpacing:2,fontWeight:700,marginBottom:14}}>EDIT HABIT</div>
-        <div style={{display:'flex',gap:8,marginBottom:14}}><input value={emoji_} onChange={e=>setEmoji_(e.target.value)} style={{...inp(),width:52,textAlign:'center',fontSize:22,padding:'8px 4px',flexShrink:0}} placeholder='😀'/><input value={name} onChange={e=>setName(e.target.value)} style={{...inp(),flex:1}}/></div>
+        <div style={{display:'flex',gap:8,marginBottom:8}}><input value={emoji_} onChange={e=>setEmoji_(e.target.value)} style={{...inp(),width:52,textAlign:'center',fontSize:22,padding:'8px 4px',flexShrink:0}} placeholder='😀'/><input value={name} onChange={e=>setName(e.target.value)} style={{...inp(),flex:1}}/></div>
+        <input value={habitSubtitle} onChange={e=>setHabitSubtitle(e.target.value)} placeholder='Subtitle (optional)' style={{...inp(),marginBottom:14,fontSize:13,color:MUTED}}/>
         <FormInput label="Time (optional)">
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
             <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...inp(),flex:1,color:time?ORANGE:MUTED}}/>
@@ -960,6 +963,13 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
         <button onClick={save} disabled={saving} style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:saving?'#2a2a2a':habit.color||GREEN,color:'#000',fontWeight:900,fontSize:15,fontFamily:'inherit',cursor:saving?'default':'pointer',marginTop:4}}>{saving?'Saving…':'Save Changes'}</button>
       </div>
     </div>
+    {habitNotesExpanded&&(<div style={{position:'absolute',inset:0,background:'#000',zIndex:10,display:'flex',flexDirection:'column'}}>
+      <div className="section-header">
+        <button onClick={()=>setHabitNotesExpanded(false)} style={{background:'none',border:'none',color:MUTED,fontSize:26,cursor:'pointer',lineHeight:1,marginLeft:-4}}>‹</button>
+        <div style={{flex:1,fontWeight:700,fontSize:15}}>Notes</div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'20px 20px 40px',whiteSpace:'pre-wrap',fontSize:15,lineHeight:1.8,color:TEXT}}>{habit.notes}</div>
+    </div>)}
   </div>);
 }
 
@@ -1046,6 +1056,7 @@ function HabitsSection({user,resetHour=4}){
   const [newTime,setNewTime]=useState('');
   const [newHabitFreq,setNewHabitFreq]=useState('daily');
   const [newEmoji,setNewEmoji]=useState('');
+  const [newSubtitle,setNewSubtitle]=useState('');
   const [newWeekDay,setNewWeekDay]=useState(()=>getTodayAbbr());
   const [newSprintId,setNewSprintId]=useState('');
   const [newBucketId,setNewBucketId]=useState('');
@@ -1137,8 +1148,8 @@ function HabitsSection({user,resetHour=4}){
 
   const addHabit=async()=>{
     if(!newName.trim())return;setSaving(true);
-    await db.from('habits').insert({user_id:user.id,name:newName.trim(),color:newColor,type:newType,scheduled_time:newTime||null,sort_order:habits.length,streak_seed:0,habit_frequency:newHabitFreq,weekly_day:newHabitFreq==='weekly'?newWeekDay:null,sprint_id:newSprintId||null,bucket_id:newBucketId||null,emoji:newEmoji||null});
-    setNewName('');setNewType('bool');setNewColor(HABIT_COLORS[0]);setNewTime('');setNewHabitFreq('daily');setNewSprintId('');setNewBucketId('');setNewEmoji('');setSaving(false);setShowAdd(false);load();
+    await db.from('habits').insert({user_id:user.id,name:newName.trim(),color:newColor,type:newType,scheduled_time:newTime||null,sort_order:habits.length,streak_seed:0,habit_frequency:newHabitFreq,weekly_day:newHabitFreq==='weekly'?newWeekDay:null,sprint_id:newSprintId||null,bucket_id:newBucketId||null,emoji:newEmoji||null,subtitle:newSubtitle||null});
+    setNewName('');setNewType('bool');setNewColor(HABIT_COLORS[0]);setNewTime('');setNewHabitFreq('daily');setNewSprintId('');setNewBucketId('');setNewEmoji('');setNewSubtitle('');setSaving(false);setShowAdd(false);load();
   };
   const deleteHabit=async id=>{if(!window.confirm('Delete habit and all its history?'))return;await db.from('habits').delete().eq('id',id);load();setEditHabit(null);};
   const updateHabit=async(id,patch)=>{await db.from('habits').update(patch).eq('id',id);load();setEditHabit(null);};
@@ -1195,6 +1206,7 @@ function HabitsSection({user,resetHour=4}){
           <div style={{width:7,height:7,borderRadius:'50%',background:col,flexShrink:0}}/>
           <div style={{overflow:'hidden',flex:1}}>
             <div style={{fontSize:TASK_FS,fontWeight:600,color:done?'#444':col,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',textDecoration:done?'line-through':'none'}}>{habit.name}</div>
+            {habit.subtitle&&<div style={{fontSize:10,color:MUTED,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{habit.subtitle}</div>}
             <div style={{display:'flex',alignItems:'center',gap:5,marginTop:1,flexWrap:'wrap'}}>
               {habit.scheduled_time&&<span style={{fontSize:10,color:ORANGE,fontWeight:600}}>{fmtTime12(habit.scheduled_time)}</span>}
               {linkedSprint&&<span style={{fontSize:9,color:LIME}}>⚡{linkedSprint.name}</span>}
@@ -1344,10 +1356,11 @@ function HabitsSection({user,resetHour=4}){
 
     {/* Add sheet */}
     {showAdd&&(<Sheet onClose={()=>setShowAdd(false)} title="New Habit">
-      <div style={{display:'flex',gap:8,marginBottom:14}}>
+      <div style={{display:'flex',gap:8,marginBottom:8}}>
         <input value={newEmoji} onChange={e=>setNewEmoji(e.target.value)} style={{...inp(),width:52,textAlign:'center',fontSize:22,padding:'8px 4px',flexShrink:0}} placeholder='😀'/>
         <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="What do you want to track?" style={{...inp(),flex:1}} autoFocus/>
       </div>
+      <input value={newSubtitle} onChange={e=>setNewSubtitle(e.target.value)} placeholder="Subtitle (optional)" style={{...inp(),marginBottom:14,fontSize:13,color:MUTED}}/>
       <FormInput label="Type">
         <div style={{display:'flex',gap:8}}>
           {[['bool','✓ Checkbox'],['count','# Counter']].map(([t,l])=>(<button key={t} onClick={()=>setNewType(t)} style={{flex:1,padding:'10px',borderRadius:10,cursor:'pointer',background:newType===t?'#0e1f10':'#1a1a1a',border:`1px solid ${newType===t?GREEN:'#2a2a2a'}`,color:newType===t?TEXT:MUTED,fontSize:13,fontFamily:'inherit',fontWeight:500}}>{l}</button>))}
@@ -1504,19 +1517,16 @@ function CountdownSection({user,resetHour=4}){
   // Split by direction
   const cdItems=enriched.filter(i=>i.direction!=='countup');
   const cuItems=enriched.filter(i=>i.direction==='countup');
-  // Upcoming = not past OR recurring (stays until marked done). Past = non-recurring past only.
-  const upcomingAll=cdItems.filter(i=>i._days>=0||i.recurring).sort((a,b)=>a._days-b._days);
-  const upcoming=upcomingAll.filter(i=>i._days<=100);
-  const far=upcomingAll.filter(i=>i._days>100).sort((a,b)=>a._days-b._days);
-  const past=cdItems.filter(i=>i._days<0&&!i.recurring).sort((a,b)=>b._days-a._days);
+  // All cdItems go into upcoming (overdue shown as sections). Far = 100+ days out.
+  const allUpcoming=cdItems.filter(i=>i._days<=100).sort((a,b)=>a._days-b._days);// includes negatives (overdue)
+  const far=cdItems.filter(i=>i._days>100).sort((a,b)=>a._days-b._days);
   const countup=[...cuItems].map(i=>({...i,_since:Math.abs(i._days)})).sort((a,b)=>b._since-a._since);
 
   const displayList=mainTab==='countup'?countup
     :mainTab==='far'?far.filter(i=>catFilter==='all'||i.category===catFilter)
-    :mainTab==='past'?past.filter(i=>catFilter==='all'||i.category===catFilter)
-    :upcoming.filter(i=>catFilter==='all'||i.category===catFilter);
+    :allUpcoming.filter(i=>catFilter==='all'||i.category===catFilter);
 
-  const tabCounts={upcoming:upcoming.length,far:far.length,past:past.length,countup:countup.length};
+  const tabCounts={upcoming:allUpcoming.length,far:far.length,countup:countup.length};
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
     {/* Header */}
@@ -1527,7 +1537,7 @@ function CountdownSection({user,resetHour=4}){
 
     {/* Chrome tabs */}
     <div className="chrome-tabs">
-      {[['upcoming','Upcoming',BLUE],['far','100+ Days','#aaa'],['past','Past','#aaa'],['countup','Count Up','#22d3ee']].map(([k,l,col])=>(
+      {[['upcoming','Upcoming',BLUE],['far','100+ Days','#aaa'],['countup','Count Up','#22d3ee']].map(([k,l,col])=>(
         <button key={k} className={`chrome-tab ${mainTab===k?'active':'inactive'}`} onClick={()=>setMainTab(k)} style={{color:mainTab===k?col:'#666'}}>
           {l}{tabCounts[k]>0?` (${tabCounts[k]})`:''}{mainTab===k&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:col}}/>}
         </button>
@@ -1591,18 +1601,33 @@ function CountdownSection({user,resetHour=4}){
       })()}
     </div>
 
-    {sheet&&(<CDEventSheet item={sheet==='new'?null:sheet} onClose={()=>setSheet(null)} onSave={handleSave} onDelete={handleDelete} defaultDirection={mainTab==='countup'?'countup':'countdown'}/>)}
-    {detailItem&&(<CDDetailScreen item={detailItem} onClose={()=>setDetailItem(null)} onEdit={item=>{setDetailItem(null);setSheet(item);}} onMarkComplete={async item=>{await handleMarkComplete(item,{stopPropagation:()=>{}});setDetailItem(null);}} onDelete={async id=>{await handleDelete(id);setDetailItem(null);}}/>)}
+    {sheet==='new'&&(<CDEventSheet item={null} onClose={()=>setSheet(null)} onSave={handleSave} onDelete={handleDelete} defaultDirection={mainTab==='countup'?'countup':'countdown'}/>)}
+    {detailItem&&(<CDDetailScreen item={detailItem} onClose={()=>setDetailItem(null)} onMarkComplete={async item=>{await handleMarkComplete(item,{stopPropagation:()=>{}});setDetailItem(null);}} onDelete={async id=>{await handleDelete(id);setDetailItem(null);}} onSaved={load}/>)}
   </div>);
 }
 
-function CDDetailScreen({item,onClose,onEdit,onMarkComplete,onDelete}){
+function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved}){
+  const [item,setItem]=useState(itemProp);
   const isCountUp=item.direction==='countup';
   const ci=CD_CATS.find(c=>c.key===item.category)||CD_CATS[0];
   const color=isCountUp?'#22d3ee':(CD_COLORS[item.category]||BLUE);
   const yrsLabel=item.first_date?(isCountUp?yearsFrom(item.first_date):yearsUntilNext(item.first_date)):null;
   const [now,setNow]=useState(()=>new Date());
+  // Edit fields
+  const [eName,setEName]=useState(item.name||'');
+  const [eEmoji,setEEmoji]=useState(item.emoji||'');
+  const [eDate,setEDate]=useState(item.target_date||'');
+  const [eFirstDate,setEFirstDate]=useState(item.first_date||'');
+  const [eCat,setECat]=useState(item.category||'countdown');
+  const [eRecur,setERecur]=useState(item.recurring||null);
+  const [eDirection,setEDirection]=useState(item.direction||'countdown');
+  const [eLink,setELink]=useState(item.link||'');
+  const [eNotes,setENotes]=useState(item.notes||'');
+  const [saving,setSaving]=useState(false);
+  const [notesExpanded,setNotesExpanded]=useState(false);
+
   useEffect(()=>{const id=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(id);},[]);
+
   const target=new Date(item.target_date+'T00:00:00');
   const diffMs=isCountUp?(now-target):(target-now);
   const isToday=daysUntil(item.target_date)===0;
@@ -1617,61 +1642,107 @@ function CDDetailScreen({item,onClose,onEdit,onMarkComplete,onDelete}){
   if(mos<0){yrs--;mos+=12;}
   const afterYM=new Date(d1);afterYM.setFullYear(afterYM.getFullYear()+yrs);afterYM.setMonth(afterYM.getMonth()+mos);
   const remDays=Math.max(0,Math.round(Math.abs(d2-afterYM)/86400000));
-  const pad=n=>String(n).padStart(2,'0');
   const bigColor=isOverdue?RED:color;
+  const pad=n=>String(n).padStart(2,'0');
+
+  const saveEdits=async()=>{
+    setSaving(true);
+    await db.from('countdowns').update({name:eName,emoji:eEmoji||null,target_date:eDate,first_date:eFirstDate||null,category:eCat,recurring:eRecur,direction:eDirection,link:eLink||null,notes:eNotes||null}).eq('id',item.id);
+    const updated={...item,name:eName,emoji:eEmoji||null,target_date:eDate,first_date:eFirstDate||null,category:eCat,recurring:eRecur,direction:eDirection,link:eLink||null,notes:eNotes||null};
+    setItem(updated);setSaving(false);if(onSaved)onSaved();
+  };
+
+  const TimeBox=({value,label})=>(<div style={{background:'#141414',borderRadius:16,padding:'20px 0',flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,border:`1px solid #2a2a2a`}}>
+    <div style={{fontSize:56,fontWeight:900,lineHeight:1,fontVariantNumeric:'tabular-nums',color:bigColor}}>{value}</div>
+    <div style={{fontSize:13,color:MUTED,fontWeight:500,letterSpacing:1}}>{label}</div>
+  </div>);
+
   return(<div style={{position:'fixed',inset:0,background:'#000',zIndex:400,display:'flex',flexDirection:'column'}}>
+    {/* Header */}
     <div className="section-header">
       <button onClick={onClose} style={{background:'none',border:'none',color:MUTED,fontSize:26,cursor:'pointer',lineHeight:1,marginLeft:-4}}>‹</button>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontWeight:900,fontSize:16,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isOverdue?RED:color}}>{item.name}</div>
+        <div style={{fontWeight:900,fontSize:16,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isOverdue?RED:color}}>{item.emoji?item.emoji+' ':''}{item.name}</div>
         {yrsLabel!==null&&<div style={{fontSize:12,color:color,fontWeight:700,marginTop:1}}>{isCountUp?`${yrsLabel} yrs`:`→ turns ${yrsLabel}`}</div>}
       </div>
-      <button onClick={()=>onEdit(item)} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:8,padding:'5px 12px',color:MUTED,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Edit</button>
+      {!isCountUp&&<button onClick={()=>onMarkComplete(item)} style={{padding:'6px 14px',borderRadius:8,border:'none',background:GREEN,color:'#000',fontWeight:800,fontSize:12,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>✓ Done</button>}
     </div>
-    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'0 32px',gap:14,textAlign:'center'}}>
-      <div style={{fontSize:52,lineHeight:1}}>{item.emoji||(isCountUp?'⏱':ci.emoji)}</div>
-      {isToday&&!isCountUp?(<div style={{fontSize:42,fontWeight:900,color:'#f7c94f',letterSpacing:-2}}>TODAY! 🎉</div>):(
-        <>
-          {/* Big number headline */}
-          <div style={{textAlign:'center'}}>
-            <div style={{fontSize:80,fontWeight:900,lineHeight:1,fontVariantNumeric:'tabular-nums',color:bigColor}}>
-              {yrs>0?yrs:mos>0?mos:totalDays}
+
+    <div style={{flex:1,overflowY:'auto',paddingBottom:40}}>
+      {/* Live timer section */}
+      <div style={{padding:'24px 20px 20px',textAlign:'center'}}>
+        <div style={{fontSize:32,lineHeight:1,marginBottom:12}}>{item.emoji||(isCountUp?'⏱':ci.emoji)}</div>
+        {isToday&&!isCountUp?(
+          <div style={{fontSize:42,fontWeight:900,color:'#f7c94f',letterSpacing:-2,marginBottom:8}}>TODAY! 🎉</div>
+        ):(
+          <>
+            {/* Stacked boxes like the screenshot */}
+            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
+              {yrs>0&&<TimeBox value={String(yrs).padStart(2,'0')} label={`year${yrs!==1?'s':''}`}/>}
+              {(yrs>0||mos>0)&&<TimeBox value={String(mos).padStart(2,'0')} label={`month${mos!==1?'s':''}`}/>}
+              {(yrs>0||mos>0||remDays>0)&&<TimeBox value={String(remDays).padStart(2,'0')} label={`day${remDays!==1?'s':''}`}/>}
+              {yrs===0&&<TimeBox value={String(totalDays).padStart(2,'0')} label={isOverdue?'days overdue':isCountUp?'days since':'days'}/>}
+              <TimeBox value={pad(hh)} label="hours"/>
+              <TimeBox value={pad(mm)} label="minutes"/>
+              <TimeBox value={pad(ss)} label="seconds"/>
             </div>
-            <div style={{fontSize:14,color:MUTED,fontWeight:600,letterSpacing:1,textTransform:'uppercase',marginTop:4}}>
-              {yrs>0?`year${yrs!==1?'s':''}`:mos>0?`month${mos!==1?'s':''}`:isCountUp?'days since':isOverdue?'days overdue':'days'}
+            <div style={{fontSize:12,color:MUTED,letterSpacing:1,textTransform:'uppercase',marginBottom:12}}>{isCountUp?'elapsed':'remaining'}</div>
+          </>
+        )}
+        <div style={{fontSize:14,color:MUTED}}>
+          {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}
+        </div>
+        {item.recurring&&<div style={{fontSize:12,color:BLUE,marginTop:4}}>↻ Repeats {item.recurring}</div>}
+        {item.link&&<a href={item.link} target="_blank" rel="noopener noreferrer" style={{display:'block',fontSize:12,color:BLUE,marginTop:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.link}</a>}
+        {item.notes&&(<button onClick={()=>setNotesExpanded(true)} style={{marginTop:8,width:'100%',padding:'8px 12px',borderRadius:8,background:'#111',border:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontFamily:'inherit',fontSize:12,textAlign:'left',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📝 {item.notes.split('\n')[0]}</button>)}
+      </div>
+
+      {/* Edit section */}
+      <div style={{borderTop:`1px solid ${BORDER}`,padding:'20px 16px 0'}}>
+        <div style={{fontSize:10,color:MUTED,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:14}}>EDIT</div>
+        <div style={{display:'flex',gap:8,marginBottom:14}}>
+          <input value={eEmoji} onChange={e=>setEEmoji(e.target.value)} style={{...inp(),width:52,textAlign:'center',fontSize:22,padding:'8px 4px',flexShrink:0}} placeholder='🎯'/>
+          <input value={eName} onChange={e=>setEName(e.target.value)} style={{...inp(),flex:1}}/>
+        </div>
+        <FormInput label="Type">
+          <div style={{display:'flex',gap:8}}>
+            {[['countdown','⏳ Countdown'],['countup','⏱ Count-Up']].map(([d,l])=>(<button key={d} onClick={()=>setEDirection(d)} style={{flex:1,padding:'9px',borderRadius:10,cursor:'pointer',background:eDirection===d?'#1a2535':'#1a1a1a',border:`1px solid ${eDirection===d?BLUE:'#2a2a2a'}`,color:eDirection===d?TEXT:MUTED,fontSize:12,fontFamily:'inherit'}}>{l}</button>))}
+          </div>
+        </FormInput>
+        <FormInput label="Date"><input type="date" value={eDate} onChange={e=>setEDate(e.target.value)} style={inp()}/></FormInput>
+        <FormInput label="Original year (for age display)">
+          <input type="date" value={eFirstDate} onChange={e=>setEFirstDate(e.target.value)} style={{...inp(),color:eFirstDate?TEXT:MUTED}}/>
+          {eFirstDate&&yearsFrom(eFirstDate)!==null&&<div style={{fontSize:12,color:color,marginTop:5,fontWeight:700}}>→ turns {yearsUntilNext(eFirstDate)}</div>}
+        </FormInput>
+        {eDirection!=='countup'&&(<>
+          <FormInput label="Category">
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {CD_CATS.map(cat=>(<button key={cat.key} onClick={()=>setECat(cat.key)} style={{background:eCat===cat.key?'#1a2535':'#1a1a1a',border:`1px solid ${eCat===cat.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eCat===cat.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{cat.emoji} {cat.label}</button>))}
             </div>
-          </div>
-          {/* Sentence format */}
-          <div style={{fontSize:16,color:TEXT,lineHeight:1.8,maxWidth:320}}>
-            {(()=>{
-              const parts=[];
-              if(yrs>0)parts.push(`${yrs} year${yrs!==1?'s':''}`);
-              if(mos>0)parts.push(`${mos} month${mos!==1?'s':''}`);
-              if(remDays>0)parts.push(`${remDays} day${remDays!==1?'s':''}`);
-              if(hh>0)parts.push(`${hh} hour${hh!==1?'s':''}`);
-              if(mm>0)parts.push(`${mm} minute${mm!==1?'s':''}`);
-              parts.push(`${ss} second${ss!==1?'s':''}`);
-              if(parts.length===1)return parts[0];
-              return parts.slice(0,-1).join(', ')+', and '+parts[parts.length-1];
-            })()}
-          </div>
-          <div style={{fontSize:12,color:MUTED,letterSpacing:1,textTransform:'uppercase'}}>{isCountUp?'elapsed':'remaining'}</div>
-        </>
-      )}
-      <div style={{fontSize:13,color:MUTED,marginTop:4}}>
-        {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}
-      </div>
-      {item.recurring&&<div style={{fontSize:12,color:BLUE}}>↻ Repeats {item.recurring}</div>}
-      {item.link&&<a href={item.link} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:BLUE,marginTop:4,display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:320}}>{item.link}</a>}
-      {item.notes&&<div style={{fontSize:13,color:MUTED,lineHeight:1.6,maxWidth:320,textAlign:'center',background:'#0a0a0a',borderRadius:8,padding:'10px 14px',whiteSpace:'pre-wrap'}}>{item.notes}</div>}
-    </div>
-    <div style={{padding:'16px 20px 40px',borderTop:`1px solid ${BORDER}`,display:'flex',flexDirection:'column',gap:10}}>
-      {!isCountUp&&<button onClick={()=>onMarkComplete(item)} style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:GREEN,color:'#000',fontWeight:900,fontSize:15,cursor:'pointer',fontFamily:'inherit'}}>✓ Mark as Done</button>}
-      <div style={{display:'flex',gap:8}}>
-        <button onClick={()=>onEdit(item)} style={{flex:1,padding:'12px',borderRadius:10,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>✏️ Edit</button>
-        <button onClick={()=>{if(window.confirm('Delete this countdown?'))onDelete(item.id);}} style={{flex:1,padding:'12px',borderRadius:10,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.1)',color:'#ef4444',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Delete</button>
+          </FormInput>
+          <FormInput label="Recurring">
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {CD_RECURRINGS.map(r=>(<button key={String(r.key)} onClick={()=>setERecur(r.key)} style={{background:eRecur===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${eRecur===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eRecur===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
+            </div>
+          </FormInput>
+        </>)}
+        <FormInput label="Link"><input value={eLink} onChange={e=>setELink(e.target.value)} placeholder="https://…" style={inp()}/></FormInput>
+        <FormInput label="Notes"><textarea value={eNotes} onChange={e=>setENotes(e.target.value)} rows={3} style={{...inp(),resize:'vertical'}}/></FormInput>
+        <div style={{display:'flex',gap:8,marginBottom:32}}>
+          <button onClick={saveEdits} disabled={saving||!eName.trim()||!eDate} style={{flex:2,padding:'13px',borderRadius:12,border:'none',background:saving?'#2a2a2a':BLUE,color:'#000',fontWeight:900,fontSize:14,cursor:saving?'default':'pointer',fontFamily:'inherit'}}>{saving?'Saving…':'Save Changes'}</button>
+          <button onClick={()=>{if(window.confirm('Delete?'))onDelete(item.id);}} style={{flex:1,padding:'13px',borderRadius:12,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.08)',color:'#ef4444',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Delete</button>
+        </div>
       </div>
     </div>
+
+    {/* Notes full-screen overlay */}
+    {notesExpanded&&(<div style={{position:'absolute',inset:0,background:'#000',zIndex:10,display:'flex',flexDirection:'column'}}>
+      <div className="section-header">
+        <button onClick={()=>setNotesExpanded(false)} style={{background:'none',border:'none',color:MUTED,fontSize:26,cursor:'pointer',lineHeight:1,marginLeft:-4}}>‹</button>
+        <div style={{flex:1,fontWeight:700,fontSize:15}}>Notes</div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'20px 20px 40px',whiteSpace:'pre-wrap',fontSize:15,lineHeight:1.8,color:TEXT}}>{item.notes}</div>
+    </div>)}
   </div>);
 }
 
@@ -1942,7 +2013,7 @@ function SidebarSection({user,resetHour,onResetHourChange,onSignOut}){
         </div>
       </div>
       <div style={{background:'#111',borderRadius:12,border:`1px solid ${BORDER}`,padding:'14px 16px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><span style={{color:MUTED,fontSize:13}}>Version</span><span style={{fontSize:13,fontWeight:700,color:LIME}}>DAYMAN 2.1</span></div>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><span style={{color:MUTED,fontSize:13}}>Version</span><span style={{fontSize:13,fontWeight:700,color:LIME}}>DAYMAN 2.2</span></div>
         <div style={{display:'flex',justifyContent:'space-between'}}><span style={{color:MUTED,fontSize:13}}>Database</span><span style={{fontSize:13,color:TEXT}}>MR Supabase</span></div>
       </div>
     </div>

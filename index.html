@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#000000"/>
-<title>DAYMAN 2.3</title>
+<title>DAYMAN 2.4</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -135,10 +135,20 @@ const daysUntil=dateStr=>{const today=new Date();today.setHours(0,0,0,0);const t
 const nextOccurrence=(dateStr,recurring)=>{
   if(!recurring)return dateStr;
   const today=new Date();today.setHours(0,0,0,0);
+  // "every N" = Nth of each month
+  const evM=String(recurring).match(/^every\s+(\d+)$/i);
+  if(evM){
+    const dayOfMonth=parseInt(evM[1]);
+    // Find next Nth that is strictly after today
+    let yr=today.getFullYear(),mo=today.getMonth();
+    let candidate=new Date(yr,mo,dayOfMonth);
+    if(candidate<=today){mo++;if(mo>11){mo=0;yr++;} candidate=new Date(yr,mo,dayOfMonth);}
+    return localDateStr(candidate);
+  }
   let d=new Date(dateStr+'T00:00:00');
-  if(recurring==='weekly')while(d<today)d.setDate(d.getDate()+7);
-  else if(recurring==='monthly')while(d<today)d.setMonth(d.getMonth()+1);
-  else if(recurring==='yearly')while(d<today)d.setFullYear(d.getFullYear()+1);
+  if(recurring==='weekly'){while(d<=today)d.setDate(d.getDate()+7);}
+  else if(recurring==='monthly'){while(d<=today)d.setMonth(d.getMonth()+1);}
+  else if(recurring==='yearly'){while(d<=today)d.setFullYear(d.getFullYear()+1);}
   return localDateStr(d);
 };
 
@@ -688,7 +698,7 @@ function SprintSection({user,resetHour:resetHourProp=4}){
         </div>
         <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
           <button onClick={e=>{e.stopPropagation();setRunTarget(sp);setView('run');}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:RED,color:'#fff',fontWeight:900,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>▶ Run</button>
-          <button onClick={e=>{e.stopPropagation();saveDailyState(sp.id,{done:!done});}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:done?GREEN:'#1a3a1a',color:done?'#000':GREEN,fontWeight:900,fontSize:12,cursor:'pointer',fontFamily:'inherit',border:`1px solid ${GREEN}55`}}>{done?'✓ Done':'Done!'}</button>
+          <button onClick={e=>{e.stopPropagation();saveDailyState(sp.id,{done:!done});}} style={{padding:'10px 18px',borderRadius:9,border:`1px solid ${GREEN}55`,background:done?GREEN:'#0a1f0a',color:done?'#000':GREEN,fontWeight:900,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>{done?'✓':'Done!'}</button>
 
         </div>
       </div>
@@ -731,12 +741,7 @@ function SprintSection({user,resetHour:resetHourProp=4}){
         <div style={{fontSize:10,color:MUTED,letterSpacing:3,fontWeight:800,marginBottom:8,display:'flex',alignItems:'center',gap:6}}><span>{SECTION_EMOJI[sec.label]}</span><span>{sec.label}</span></div>
         {sec.items.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
       </div>))}
-      {!loadingList&&sprintTab==='today'&&doneSprints.length>0&&(<div style={{marginTop:16}}>
-        <div style={{fontSize:10,color:MUTED,letterSpacing:3,fontWeight:800,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
-          <span style={{color:GREEN}}>✓</span><span style={{color:GREEN}}>COMPLETED ({doneCount})</span>
-        </div>
-        {doneSprints.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
-      </div>)}
+
       {!loadingList&&sprintTab!=='today'&&tabList.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
     </div>
 
@@ -1469,7 +1474,7 @@ function HabitsSection({user,resetHour=4}){
 // ═══════════════════════════════════════════════════════════════════
 // COUNTDOWN SECTION
 // ═══════════════════════════════════════════════════════════════════
-const CD_RECURRINGS=[{key:null,label:'One-time'},{key:'weekly',label:'📅 Weekly'},{key:'monthly',label:'🗓 Monthly'},{key:'yearly',label:'🔁 Yearly'}];
+const CD_RECURRINGS=[{key:null,label:'One-time'},{key:'weekly',label:'📅 Weekly'},{key:'monthly',label:'🗓 Monthly'},{key:'yearly',label:'🔁 Yearly'},{key:'every 1',label:'Every 1st'},{key:'every 15',label:'Every 15th'},{key:'every 25',label:'Every 25th'},{key:'custom_day',label:'Every Nth…'}];
 
 function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
   const [name,setName]=useState(item?.name||'');
@@ -1481,10 +1486,12 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
   const [direction,setDirection]=useState(item?.direction||defaultDirection||'countdown');
   const [cdLink,setCdLink]=useState(item?.link||'');
   const [cdNotes,setCdNotes]=useState(item?.notes||'');
+  const [customDay,setCustomDay]=useState(()=>{const m=(item?.recurring||'').match(/^every (\d+)$/);return m?m[1]:'';});
   const [saving,setSaving]=useState(false);
   const isCountUp=direction==='countup';
+  const effectiveRecur=eRecur_==='custom_day'?`every ${customDay||'1'}`:eRecur_;
   const habit_col=CD_COLORS[cat]||BLUE;
-  const save=async()=>{if(!name.trim()||!date)return;setSaving(true);await onSave({name:name.trim(),emoji:cdEmoji||null,target_date:date,first_date:firstDate||null,category:cat,recurring,direction,link:cdLink||null,notes:cdNotes||null});setSaving(false);};
+  const save=async()=>{if(!name.trim()||!date)return;setSaving(true);await onSave({name:name.trim(),emoji:cdEmoji||null,target_date:date,first_date:firstDate||null,category:cat,recurring:effectiveRecur,direction,link:cdLink||null,notes:cdNotes||null});setSaving(false);};
   return(<Sheet onClose={onClose} title={item?(isCountUp?'Edit Count-Up':'Edit Countdown'):(isCountUp?'New Count-Up':'New Countdown')}>
     <FormInput label="Type">
       <div style={{display:'flex',gap:8}}>
@@ -1511,7 +1518,8 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
       </FormInput>
       <FormInput label="Recurring">
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          {CD_RECURRINGS.map(r=>(<button key={String(r.key)} onClick={()=>setRecur(r.key)} style={{background:recurring===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${recurring===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:recurring===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
+          {CD_RECURRINGS.map(r=>(<button key={String(r.key)} onClick={()=>setERecur_(r.key)} style={{background:eRecur_===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${eRecur_===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eRecur_===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
+          {eRecur_==='custom_day'&&<input type="number" min="1" max="31" value={customDay} onChange={e=>setCustomDay(e.target.value)} placeholder="Day # (1-31)" style={{...inp(),marginTop:8,width:140}} />}
         </div>
       </FormInput>
     </>)}
@@ -1545,19 +1553,14 @@ function CountdownSection({user,resetHour=4}){
 
   // Mark a recurring countdown complete → advance to next occurrence
   const handleMarkComplete=async(item,e)=>{
-    e.stopPropagation();
-    if(!item.recurring){// non-recurring: just move to past by setting last_completed
+    if(e&&e.stopPropagation)e.stopPropagation();
+    if(!item.recurring){
+      // Non-recurring: mark last_completed — it will disappear from overdue section
       await db.from('countdowns').update({last_completed:localDateStr()}).eq('id',item.id);
     }else{
-      // advance target_date to next occurrence from today
-      const next=nextOccurrence(item.target_date,item.recurring);
-      // compute the one after that (to store as new target)
-      const today=new Date();today.setHours(0,0,0,0);
-      let d=new Date(next+'T00:00:00');
-      if(item.recurring==='weekly')d.setDate(d.getDate()+7);
-      else if(item.recurring==='monthly')d.setMonth(d.getMonth()+1);
-      else if(item.recurring==='yearly')d.setFullYear(d.getFullYear()+1);
-      const newTarget=localDateStr(d);
+      // Recurring: next occurrence is always AFTER today regardless of how overdue we are
+      // e.g. completing on the 17th for "every 15" → next 15th of NEXT month
+      const newTarget=nextOccurrence(localDateStr(),item.recurring);
       await db.from('countdowns').update({target_date:newTarget,last_completed:localDateStr()}).eq('id',item.id);
     }
     load();
@@ -1627,6 +1630,7 @@ function CountdownSection({user,resetHour=4}){
                 <span style={{fontSize:11,color:MUTED}}>
                   {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
                   {item.recurring&&<span style={{marginLeft:5,color:BLUE}}>↻ {item.recurring}</span>}
+                  {isOverdue_&&<span style={{marginLeft:5,color:RED,fontWeight:700}}>{Math.abs(item._days)}d overdue</span>}
                 </span>
               </div>
             </div>
@@ -1781,7 +1785,8 @@ function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved})
           </FormInput>
           <FormInput label="Recurring">
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-              {CD_RECURRINGS.map(r=>(<button key={String(r.key)} onClick={()=>setERecur(r.key)} style={{background:eRecur===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${eRecur===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eRecur===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
+              {CD_RECURRINGS.filter(r=>r.key!=='custom_day').map(r=>(<button key={String(r.key)} onClick={()=>setERecur(r.key)} style={{background:eRecur===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${eRecur===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eRecur===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
+          <input type="text" value={eRecur||''} onChange={e=>setERecur(e.target.value)} placeholder="Or type: every 15, every 1…" style={{...inp(),marginTop:8}}/>
             </div>
           </FormInput>
         </>)}
@@ -2072,7 +2077,7 @@ function SidebarSection({user,resetHour,onResetHourChange,onSignOut}){
         </div>
       </div>
       <div style={{background:'#111',borderRadius:12,border:`1px solid ${BORDER}`,padding:'14px 16px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><span style={{color:MUTED,fontSize:13}}>Version</span><span style={{fontSize:13,fontWeight:700,color:LIME}}>DAYMAN 2.3</span></div>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><span style={{color:MUTED,fontSize:13}}>Version</span><span style={{fontSize:13,fontWeight:700,color:LIME}}>DAYMAN 2.4</span></div>
         <div style={{display:'flex',justifyContent:'space-between'}}><span style={{color:MUTED,fontSize:13}}>Database</span><span style={{fontSize:13,color:TEXT}}>MR Supabase</span></div>
       </div>
     </div>
@@ -2991,6 +2996,7 @@ function DCBoardsScreen({user,onSelect}){
 // ─── TASKS SECTION (MainApp equivalent) ─────────────────────────────
 function TasksSection({user}){
   const [board,setBoard]=useState(()=>{const def=getDefaultId(user.id);return def?{id:def,_loading:true}:null;});
+  const [allBoards,setAllBoards]=useState([]);
   const [tasks,setTasks]=useState([]);const [buckets,setBuckets]=useState([]);const [loading,setLoading]=useState(false);const [viewMode,setViewMode]=useState("plan");
   const [actions,setActions]=useState(DEFAULT_ACTIONS);const [brands_t,setBrandsT]=useState([]);const [persons,setPersons]=useState([]);const [labels,setLabels]=useState([]);const [devices,setDevices]=useState([]);const [sprints_t,setSprintsT]=useState([]);
   const [editing,setEditing]=useState(null);const [celebratingIds,setCelebratingIds]=useState(new Set());const celebRef=useRef(new Set());
@@ -3019,6 +3025,14 @@ function TasksSection({user}){
     setLoading(false);
   },[]);
 
+  useEffect(()=>{
+    db.from("board_members").select("role,boards(*)").eq("user_id",user.id).then(({data})=>{
+      const bds=(data||[]).map(m=>({...m.boards,role:m.role}));
+      setAllBoards(bds);
+      // Auto-select first board if none set
+      if(!board&&bds.length>0)setBoard(bds[0]);
+    });
+  },[]);
   useEffect(()=>{if(board&&board.id&&!board._loading)loadBoard(board);},[board?.id]);
   useEffect(()=>{
     if(board?.id&&board._loading){
@@ -3063,13 +3077,21 @@ function TasksSection({user}){
 
   const VIEWS=[["plan","▣ Plan"],["board","⊞ Board"],["simple","≡ Freq"],["search","🔍 Search"]];
 
-  if(!board)return(<ThemeCtx.Provider value={DARK_THEME}><DCBoardsScreen user={user} onSelect={b=>{setBoard(b);setViewMode("plan");}}/></ThemeCtx.Provider>);
+  if(!board&&!allBoards.length)return(<ThemeCtx.Provider value={DARK_THEME}><div style={{height:"100%",display:"flex",flexDirection:"column",background:"#000",overflow:"hidden"}}>
+    <div className="section-header"><div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:LIME}}>📋</span> TASKS</span></div></div>
+    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,color:MUTED}}>
+      <div style={{fontSize:36}}>📋</div>
+      <div style={{fontSize:14,fontWeight:700}}>No boards yet</div>
+      <div style={{fontSize:12}}>Create one in the ⋮ menu</div>
+      <button onClick={async()=>{const name=prompt("Board name?");if(!name)return;const{data}=await db.from("boards").insert({user_id:user.id,name,emoji:"📋"}).select().single();if(data){await db.from("board_members").upsert({board_id:data.id,user_id:user.id,role:"owner"},{onConflict:"board_id,user_id"});setBoard(data);setAllBoards([data]);}}} style={{padding:"10px 24px",borderRadius:10,border:"none",background:LIME,color:"#000",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>+ Create Board</button>
+    </div>
+  </div></ThemeCtx.Provider>);
+  if(!board)return(<ThemeCtx.Provider value={DARK_THEME}><div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"#000"}}><Spinner size={24} color={LIME}/></div></ThemeCtx.Provider>);
 
   return(<ThemeCtx.Provider value={DARK_THEME}>
     <div style={{height:"100%",display:"flex",flexDirection:"column",background:"#000",overflow:"hidden"}}>
       {/* Header */}
       <div className="section-header">
-        <button onClick={()=>setBoard(null)} style={{background:"none",border:"none",color:MUTED,fontSize:22,cursor:"pointer",lineHeight:1,marginLeft:-4,flexShrink:0}}>‹</button>
         <span style={{fontSize:20,marginRight:6,flexShrink:0}}>{board.emoji||"📋"}</span>
         <div style={{flex:1,minWidth:0,fontWeight:900,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{board.name}</div>
         <div style={{display:"flex",gap:6,flexShrink:0}}>
@@ -3097,6 +3119,8 @@ function TasksSection({user}){
         <div onClick={()=>setShowMenu(false)} style={{position:"fixed",inset:0,zIndex:498}}/>
         <div style={{position:"fixed",top:58,right:12,background:"#1a1a1a",border:`1px solid ${BORDER}`,borderRadius:12,minWidth:180,zIndex:499,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.8)"}}>
           {[["📦 Buckets",()=>{setShowBucketsMgr(true);setShowMenu(false);}],["🏷 Labels",()=>{setShowLabelsMgr(true);setShowMenu(false);}],["👤 People",()=>{setShowPersonsMgr(true);setShowMenu(false);}],["🏢 Brands (tags)",()=>{setShowBrandsMgr(true);setShowMenu(false);}],["⚡ Actions",()=>{setShowActionsMgr(true);setShowMenu(false);}],["📱 Devices",()=>{setShowDevicesMgr(true);setShowMenu(false);}],["📥 Import",()=>{setShowImport(true);setShowMenu(false);}],["↻ Refresh",()=>{loadBoard(board);setShowMenu(false);}]].map(([l,fn])=>(<button key={l} onClick={fn} style={{width:"100%",padding:"11px 16px",background:"none",border:"none",color:TEXT,cursor:"pointer",fontSize:13,fontFamily:"inherit",textAlign:"left",borderBottom:`1px solid #111`}}>{l}</button>))}
+          {allBoards.length>1&&(<><div style={{padding:"8px 16px 4px",fontSize:9,fontWeight:700,color:MUTED,letterSpacing:1.5,textTransform:"uppercase"}}>Switch Board</div>{allBoards.map(b=>(<button key={b.id} onClick={()=>{setBoard(b);setShowMenu(false);}} style={{width:"100%",padding:"9px 16px",background:board?.id===b.id?"#0a1f0a":"none",border:"none",color:board?.id===b.id?LIME:TEXT,cursor:"pointer",fontSize:12,fontFamily:"inherit",textAlign:"left",borderBottom:`1px solid #111`,display:"flex",alignItems:"center",gap:8}}><span>{b.emoji||"📋"}</span><span>{b.name}</span>{board?.id===b.id&&<span style={{marginLeft:"auto",fontSize:10,color:LIME}}>●</span>}</button>))}</>)}
+          <button onClick={async()=>{setShowMenu(false);const name=prompt("New board name?");if(!name)return;const{data}=await db.from("boards").insert({user_id:user.id,name,emoji:"📋"}).select().single();if(data){await db.from("board_members").upsert({board_id:data.id,user_id:user.id,role:"owner"},{onConflict:"board_id,user_id"});const b={...data,role:"owner"};setAllBoards(prev=>[...prev,b]);setBoard(b);}}} style={{width:"100%",padding:"11px 16px",background:"none",border:"none",color:LIME,cursor:"pointer",fontSize:13,fontFamily:"inherit",textAlign:"left",borderBottom:`1px solid #111`}}>+ New Board</button>
         </div>
       </>)}
       {/* Edit modal */}
@@ -3143,7 +3167,9 @@ function App(){
   const [screen,setScreen]=useState('loading');
   const [user,setUser]=useState(null);
   const [tab,setTab]=useState('habits');
+  const switchTab=t=>{setTab(t);if(t==='now')setNowKey(k=>k+1);};
   const [resetHour,setResetHour]=useState(()=>getResetHour());
+  const [nowKey,setNowKey]=useState(0);
   const updateResetHour=h=>{setResetHour(h);try{localStorage.setItem(RESET_HOUR_LS,String(h));}catch{}};
 
   useEffect(()=>{
@@ -3157,7 +3183,7 @@ function App(){
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
     <div style={{flex:1,overflow:'hidden',position:'relative'}}>
-      <div style={{display:tab==='now'?'block':'none',height:'100%'}}>{user&&<NowSection user={user} resetHour={resetHour} onNavigate={t=>setTab(t)}/>}</div>
+      <div style={{display:tab==='now'?'block':'none',height:'100%'}}>{user&&<NowSection key={nowKey} user={user} resetHour={resetHour} onNavigate={switchTab}/>}</div>
       <div style={{display:tab==='sprint'?'block':'none',height:'100%'}}>{user&&<SprintSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='habits'?'block':'none',height:'100%'}}>{user&&<HabitsSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='countdown'?'block':'none',height:'100%'}}>{user&&<CountdownSection user={user} resetHour={resetHour}/>}</div>
@@ -3166,7 +3192,7 @@ function App(){
       <div style={{display:tab==='brands'?'block':'none',height:'100%'}}>{user&&<BrandsSection user={user}/>}</div>
       <div style={{display:tab==='sidebar'?'block':'none',height:'100%'}}>{user&&<SidebarSection user={user} resetHour={resetHour} onResetHourChange={updateResetHour} onSignOut={()=>db.auth.signOut()}/>}</div>
     </div>
-    <BottomNav tab={tab} setTab={setTab}/>
+    <BottomNav tab={tab} setTab={switchTab}/>
   </div>);
 }
 

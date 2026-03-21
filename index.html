@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#000000"/>
-<title>DAYMAN 2.5</title>
+<title>DAYMAN 2.6</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -76,14 +76,15 @@ const fmtTime12=t=>{if(!t)return'';const[h,m]=t.split(':');const hr=parseInt(h);
 const fmtDate=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const totalSecs=ts=>(ts||[]).reduce((a,t)=>a+(Number(t.seconds)||0),0);
 
-// ── Sprint date helpers ──────────────────────────────────────────
-const todayKey=(resetHour=4)=>{
+// ── HARDCODED RESET HOUR = 3am ───────────────────────────────────
+const RESET_HOUR=3;// New day starts at 3am. Not configurable.
+const todayKey=(resetHour=RESET_HOUR)=>{
   const now=new Date();const reset=new Date(now);
   reset.setHours(resetHour,0,0,0);
   if(now<reset)reset.setDate(reset.getDate()-1);
   return reset.toISOString().slice(0,10);
 };
-const resolveDS=(raw,resetHour=4)=>{
+const resolveDS=(raw,resetHour=RESET_HOUR)=>{
   if(!raw||!raw.date)return{date:null,done:false,skipped:[]};
   if(raw.date!==todayKey(resetHour))return{date:null,done:false,skipped:[]};
   return{date:raw.date,done:!!raw.done,skipped:Array.isArray(raw.skipped)?raw.skipped:[]};
@@ -629,7 +630,7 @@ const calcSprintStreak=(runs,sprintId,resetHour)=>{
   return streak;
 };
 
-function SprintSection({user,resetHour:resetHourProp=4}){
+function SprintSection({user,resetHour:resetHourProp=RESET_HOUR,menuBtn}){
   const [sprints,setSprints]=useState([]);const [loadingList,setLoadingList]=useState(true);
   const [allRuns,setAllRuns]=useState([]);
   const [view,setView]=useState('list');
@@ -730,10 +731,10 @@ function SprintSection({user,resetHour:resetHourProp=4}){
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
     {/* Fixed header */}
-    <div className="section-header">
-      <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:LIME}}>⚡</span> SPRINT</span></div>
+    <div style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',borderBottom:`1px solid ${BORDER}`,flexShrink:0,height:38}}>
+      <div style={{flex:1}}/>
       <DotMenu items={[{label:'↻ Refresh',action:loadSprints},{label:'📊 Run History',action:()=>setShowHistory(true)},{label:'⚙️ Settings',action:()=>setShowSettings(true)}]}/>
-      <button onClick={()=>{setEditTarget(null);setView('edit');}} style={{background:LIME,border:'none',borderRadius:8,padding:'5px 13px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
+      <button onClick={()=>{setEditTarget(null);setView('edit');}} style={{background:LIME,border:'none',borderRadius:8,padding:'4px 12px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
     {/* Chrome tabs */}
     <div className="chrome-tabs">
@@ -786,7 +787,8 @@ const getLastNOccurrences=(weekdayIdx,n)=>{
 const DAY_IDX={SUN:0,MON:1,TUE:2,WED:3,THU:4,FRI:5,SAT:6};
 const RESET_HOUR_LS='dayman_reset_hour';
 const HABIT_FREQ_LS='dm_hfreq';
-const getResetHour=()=>{try{return JSON.parse(localStorage.getItem(RESET_HOUR_LS)||'4');}catch{return 4;}};const HABIT_HIDE_LS='dm_hhide';
+const getResetHour=()=>RESET_HOUR;// hardcoded 3am
+const HABIT_HIDE_LS='dm_hhide';
 const DAY_FULL_MAP={MON:'Monday',TUE:'Tuesday',WED:'Wednesday',THU:'Thursday',FRI:'Friday',SAT:'Saturday',SUN:'Sunday'};
 const HABIT_COLORS=['#38bdf8','#4ade80','#fb923c','#f472b6','#a78bfa','#facc15','#34d399','#f87171','#22d3ee','#e879f9'];
 
@@ -1067,7 +1069,7 @@ function BucketManager({user,buckets,onClose,onReload}){
   </div>);
 }
 
-function HabitsSection({user,resetHour=4}){
+function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
   const [habits,setHabits]=useState([]);
   const [buckets,setBuckets]=useState([]);
   const [logs,setLogs]=useState({});
@@ -1306,10 +1308,10 @@ function HabitsSection({user,resetHour=4}){
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
     {/* Header */}
-    <div className="section-header">
-      <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:GREEN}}>✓</span> HABITS</span></div>
-      <button onClick={()=>setShowBucketMgr(true)} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:7,padding:'4px 10px',cursor:'pointer',color:MUTED,fontSize:11,fontFamily:'inherit',marginRight:4}}>Buckets</button>
-      <button onClick={()=>setShowAdd(true)} style={{background:GREEN,border:'none',borderRadius:8,padding:'5px 14px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
+    <div style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',borderBottom:`1px solid ${BORDER}`,flexShrink:0,height:38}}>
+      <div style={{flex:1}}/>
+      <button onClick={()=>setShowBucketMgr(true)} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:7,padding:'4px 10px',cursor:'pointer',color:MUTED,fontSize:11,fontFamily:'inherit'}}>Buckets</button>
+      <button onClick={()=>setShowAdd(true)} style={{background:GREEN,border:'none',borderRadius:8,padding:'4px 12px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
 
     {/* Chrome tabs: TODAY | UPCOMING */}
@@ -1564,7 +1566,7 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
   </Sheet>);
 }
 
-function CountdownSection({user,resetHour=4}){
+function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
   const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);
   const [mainTab,setMainTab]=useState('upcoming');const [catFilter,setCatFilter]=useState('all');
   const [sheet,setSheet]=useState(null);const [detailItem,setDetailItem]=useState(null);
@@ -1620,9 +1622,8 @@ function CountdownSection({user,resetHour=4}){
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
     {/* Header */}
-    <div className="section-header">
-      <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:BLUE}}>⏳</span> COUNTDOWN</span></div>
-      <button onClick={()=>setSheet('new')} style={{background:BLUE,border:'none',borderRadius:8,padding:'5px 14px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',padding:'0 12px',borderBottom:`1px solid ${BORDER}`,flexShrink:0,height:38}}>
+      <button onClick={()=>setSheet('new')} style={{background:BLUE,border:'none',borderRadius:8,padding:'4px 12px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
 
     {/* Chrome tabs */}
@@ -1751,8 +1752,9 @@ function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved})
   const saveEdits=async()=>{
     setSaving(true);
     await db.from('countdowns').update({name:eName,emoji:eEmoji||null,target_date:eDate,first_date:eFirstDate||null,category:eCat,recurring:eRecur,direction:eDirection,link:eLink||null,notes:eNotes||null}).eq('id',item.id);
-    const updated={...item,name:eName,emoji:eEmoji||null,target_date:eDate,first_date:eFirstDate||null,category:eCat,recurring:eRecur,direction:eDirection,link:eLink||null,notes:eNotes||null};
-    setItem(updated);setSaving(false);if(onSaved)onSaved();
+    setSaving(false);
+    if(onSaved)onSaved();
+    onClose();// close after save
   };
 
   return(<div style={{position:'fixed',inset:0,background:'#000',zIndex:400,display:'flex',flexDirection:'column'}}>
@@ -1763,7 +1765,6 @@ function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved})
         <div style={{fontWeight:900,fontSize:16,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isOverdue?RED:color}}>{item.emoji?item.emoji+' ':''}{item.name}</div>
         {yrsLabel!==null&&<div style={{fontSize:12,color:color,fontWeight:700,marginTop:1}}>{isCountUp?`${yrsLabel} yrs`:`→ turns ${yrsLabel}`}</div>}
       </div>
-      {!isCountUp&&<button onClick={()=>onMarkComplete(item)} style={{padding:'6px 14px',borderRadius:8,border:'none',background:GREEN,color:'#000',fontWeight:800,fontSize:12,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>✓ Done</button>}
     </div>
 
     <div style={{flex:1,overflowY:'auto',paddingBottom:40}}>
@@ -1793,6 +1794,8 @@ function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved})
         {item.recurring&&<div style={{fontSize:12,color:BLUE,marginTop:4}}>↻ Repeats {item.recurring}</div>}
         {item.link&&<a href={item.link} target="_blank" rel="noopener noreferrer" style={{display:'block',fontSize:12,color:BLUE,marginTop:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.link}</a>}
         {item.notes&&(<button onClick={()=>setNotesExpanded(true)} style={{marginTop:8,width:'100%',padding:'8px 12px',borderRadius:8,background:'#111',border:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontFamily:'inherit',fontSize:12,textAlign:'left',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📝 {item.notes.split('\n')[0]}</button>)}
+        {/* Done button - moved here away from accidental top-right taps */}
+        {!isCountUp&&<button onClick={()=>onMarkComplete(item)} style={{marginTop:14,width:'100%',padding:'13px',borderRadius:12,border:`1px solid ${GREEN}55`,background:'#0a140a',color:GREEN,fontWeight:800,fontSize:15,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>✓ Mark Done{item.recurring?` (resets to next occurrence)`:''}</button>}
       </div>
 
       {/* Edit section */}
@@ -1839,7 +1842,7 @@ function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved})
         <FormInput label="Link"><input value={eLink} onChange={e=>setELink(e.target.value)} placeholder="https://…" style={inp()}/></FormInput>
         <FormInput label="Notes"><textarea value={eNotes} onChange={e=>setENotes(e.target.value)} rows={3} style={{...inp(),resize:'vertical'}}/></FormInput>
         <div style={{display:'flex',gap:8,marginBottom:32}}>
-          <button onClick={saveEdits} disabled={saving||!eName.trim()||!eDate} style={{flex:2,padding:'13px',borderRadius:12,border:'none',background:saving?'#2a2a2a':BLUE,color:'#000',fontWeight:900,fontSize:14,cursor:saving?'default':'pointer',fontFamily:'inherit'}}>{saving?'Saving…':'Save Changes'}</button>
+          <button onClick={saveEdits} disabled={saving||!eName.trim()||!eDate} style={{flex:2,padding:'13px',borderRadius:12,border:'none',background:saving?'#2a2a2a':BLUE,color:'#000',fontWeight:900,fontSize:14,cursor:saving?'default':'pointer',fontFamily:'inherit'}}>{saving?'Saving…':'Save & Close'}</button>
           <button onClick={()=>{if(window.confirm('Delete?'))onDelete(item.id);}} style={{flex:1,padding:'13px',borderRadius:12,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.08)',color:'#ef4444',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Delete</button>
         </div>
       </div>
@@ -1996,7 +1999,7 @@ function FreqTaskDetail({task,boards,onClose,onSave,onDelete,onMarkDone}){
   </div>);
 }
 
-function FreqSection({user,resetHour=4}){
+function FreqSection({user,resetHour=RESET_HOUR,menuBtn}){
   const [tasks,setTasks]=useState([]);const [raw,setRaw]=useState({});
   const [boards,setBoards]=useState([]);const [loading,setLoading]=useState(true);
   const [tab,setTab]=useState('do');const [q,setQ]=useState('');
@@ -2046,10 +2049,9 @@ function FreqSection({user,resetHour=4}){
   else{sections_.push({label:'',color:'',items:rows});}
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
-    <div className="section-header">
-      <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:ORANGE}}>🔁</span> FREQ</span></div>
-      <span style={{fontSize:11,color:MUTED}}>{rows.length} task{rows.length!==1?'s':''}</span>
-      <button onClick={()=>setAddOpen(true)} style={{background:ORANGE,border:'none',borderRadius:8,padding:'5px 13px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
+    <div style={{display:'flex',alignItems:'center',gap:8,padding:'0 12px',borderBottom:`1px solid ${BORDER}`,flexShrink:0,height:38}}>
+      <span style={{fontSize:11,color:MUTED,flex:1}}>{rows.length} task{rows.length!==1?'s':''}</span>
+      <button onClick={()=>setAddOpen(true)} style={{background:ORANGE,border:'none',borderRadius:8,padding:'4px 12px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
 
     {/* Chrome tabs */}
@@ -2339,7 +2341,7 @@ function BrandsSection({user}){
 // ═══════════════════════════════════════════════════════════════════
 // NOW SECTION — everything due today, sorted by time
 // ═══════════════════════════════════════════════════════════════════
-function NowSection({user,resetHour=4,onNavigate}){
+function NowSection({user,resetHour=RESET_HOUR,onNavigate,menuBtn}){
   const [items,setItems]=useState([]);
   const [loading,setLoading]=useState(true);
   const [doneIds,setDoneIds]=useState(new Set());
@@ -2458,8 +2460,7 @@ function NowSection({user,resetHour=4,onNavigate}){
   const TYPE_TAB={sprint:'sprint',habit:'habits',countdown:'countdown',freq:'freq'};
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
-    <div className="section-header">
-      <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:'#f7c94f'}}>☀</span> NOW</span></div>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',padding:'0 12px',borderBottom:`1px solid ${BORDER}`,flexShrink:0,height:38}}>
       <button onClick={load} style={{background:'none',border:`1px solid ${BORDER}`,borderRadius:7,padding:'4px 10px',cursor:'pointer',color:MUTED,fontSize:11,fontFamily:'inherit'}}>↻</button>
     </div>
     <div style={{flex:1,overflowY:'auto',paddingBottom:NAV_H+12}}>
@@ -3212,9 +3213,8 @@ function DCBoardsScreen({user,onSelect}){
   const toggleDefault=id=>{const next=defaultId===id?null:id;setDefId(next);setDefaultId(user.id,next);};
   const loadAll=async()=>{const{data}=await db.from("tasks").select("*").in("board_id",boards.map(b=>b.id));if(data)setAllTasks(data.map(dbToTask));setShowSearch(true);};
   return(<div style={{height:"100%",display:"flex",flexDirection:"column",background:"#000"}}>
-    <div className="section-header">
-      <div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:LIME}}>📋</span> TASKS</span></div>
-      <button onClick={loadAll} style={{background:"none",border:`1px solid ${BORDER}`,borderRadius:7,padding:"5px 9px",cursor:"pointer",fontSize:14,color:MUTED}} title="Search all">🔍</button>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"0 12px",borderBottom:`1px solid ${BORDER}`,flexShrink:0,height:38}}>
+      <button onClick={loadAll} style={{background:"none",border:`1px solid ${BORDER}`,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:14,color:MUTED}} title="Search all">🔍</button>
     </div>
     <div style={{flex:1,overflowY:"auto",padding:16,paddingBottom:NAV_H+12}}>
       {loading&&<div style={{display:"flex",justifyContent:"center",paddingTop:40}}><Spinner size={22} color={LIME}/></div>}
@@ -3336,7 +3336,7 @@ function TasksSection({user}){
   const VIEWS=[["plan","▣ Plan"],["board","⊞ Board"],["simple","≡ Freq"],["search","🔍 Search"]];
 
   if(!board&&!allBoards.length)return(<ThemeCtx.Provider value={DARK_THEME}><div style={{height:"100%",display:"flex",flexDirection:"column",background:"#000",overflow:"hidden"}}>
-    <div className="section-header"><div style={{flex:1}}><span style={{fontWeight:900,fontSize:17,letterSpacing:-1}}><span style={{color:LIME}}>📋</span> TASKS</span></div></div>
+    <div style={{height:38,borderBottom:`1px solid ${BORDER}`}}/>
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,color:MUTED}}>
       <div style={{fontSize:36}}>📋</div>
       <div style={{fontSize:14,fontWeight:700}}>No boards yet</div>
@@ -3348,14 +3348,14 @@ function TasksSection({user}){
 
   return(<ThemeCtx.Provider value={DARK_THEME}>
     <div style={{height:"100%",display:"flex",flexDirection:"column",background:"#000",overflow:"hidden"}}>
-      {/* Header */}
-      <div className="section-header">
-        <span style={{fontSize:20,marginRight:6,flexShrink:0}}>{board.emoji||"📋"}</span>
-        <div style={{flex:1,minWidth:0,fontWeight:900,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{board.name}</div>
-        <div style={{display:"flex",gap:6,flexShrink:0}}>
-          <button onClick={()=>setShowSearch(v=>!v)} style={{background:"none",border:`1px solid ${BORDER}`,borderRadius:7,padding:"5px 9px",cursor:"pointer",fontSize:13,color:MUTED}}>🔍</button>
-          <button onClick={()=>setShowMenu(v=>!v)} style={{background:"none",border:`1px solid ${BORDER}`,borderRadius:7,padding:"5px 9px",cursor:"pointer",fontSize:13,color:MUTED}}>⋮</button>
-          <button onClick={()=>{const t=mkTask("do",board.id);t.dueDate=localDateStr();setEditing(t);}} style={{background:LIME,border:"none",borderRadius:8,padding:"5px 13px",cursor:"pointer",color:"#000",fontSize:20,fontWeight:800,lineHeight:1.2}}>+</button>
+      {/* Sub-header: board name + actions */}
+      <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 8px 0 12px",borderBottom:`1px solid ${BORDER}`,flexShrink:0,height:38}}>
+        <span style={{fontSize:16,flexShrink:0}}>{board.emoji||"📋"}</span>
+        <div style={{flex:1,minWidth:0,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:MUTED}}>{board.name}</div>
+        <div style={{display:"flex",gap:5,flexShrink:0}}>
+          <button onClick={()=>setShowSearch(v=>!v)} style={{background:"none",border:`1px solid ${BORDER}`,borderRadius:7,padding:"4px 8px",cursor:"pointer",fontSize:13,color:MUTED}}>🔍</button>
+          <button onClick={()=>setShowMenu(v=>!v)} style={{background:"none",border:`1px solid ${BORDER}`,borderRadius:7,padding:"4px 8px",cursor:"pointer",fontSize:13,color:MUTED}}>⋮</button>
+          <button onClick={()=>{const t=mkTask("do",board.id);t.dueDate=localDateStr();setEditing(t);}} style={{background:LIME,border:"none",borderRadius:8,padding:"4px 12px",cursor:"pointer",color:"#000",fontSize:20,fontWeight:800,lineHeight:1.2}}>+</button>
         </div>
       </div>
       {/* View tabs */}
@@ -3398,51 +3398,44 @@ function TasksSection({user}){
 // ═══════════════════════════════════════════════════════════════════
 // SIDEBAR DRAWER
 // ═══════════════════════════════════════════════════════════════════
-function SidebarDrawer({open,onClose,tab,setTab,user,resetHour,onResetHourChange,onSignOut}){
+function SidebarDrawer({open,onClose,tab,setTab,user,onSignOut}){
   const NAV_ITEMS=[
     {key:'now',label:'NOW',icon:'☀',color:'#f7c94f'},
     {key:'habits',label:'HABITS',icon:'✓',color:GREEN},
     {key:'sprint',label:'SPRINT',icon:'⚡',color:LIME},
     {key:'countdown',label:'COUNTDOWN',icon:'⏳',color:BLUE},
     {key:'freq',label:'FREQ',icon:'🔁',color:ORANGE},
-    {key:'tasks',label:'TASKS',icon:'📋',color:LIME},
+    {key:'all',label:'ALL TASKS',icon:'∞',color:'#c084fc'},
+    {key:'tasks',label:'TASKS (Board)',icon:'📋',color:LIME},
     {key:'brands',label:'BRANDS',icon:'🏷',color:LIME},
   ];
   return(<>
     {open&&<div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:800,backdropFilter:'blur(2px)'}}/>}
-    <div style={{position:'fixed',top:0,left:0,bottom:0,width:260,background:'#0a0a0a',borderRight:`1px solid ${BORDER}`,zIndex:900,display:'flex',flexDirection:'column',transform:open?'translateX(0)':'translateX(-100%)',transition:'transform .25s cubic-bezier(.4,0,.2,1)',boxShadow:open?'8px 0 40px rgba(0,0,0,.8)':'none'}}>
+    <div style={{position:'fixed',top:0,left:0,bottom:0,width:270,background:'#0a0a0a',borderRight:`1px solid ${BORDER}`,zIndex:900,display:'flex',flexDirection:'column',transform:open?'translateX(0)':'translateX(-100%)',transition:'transform .25s cubic-bezier(.4,0,.2,1)',boxShadow:open?'8px 0 40px rgba(0,0,0,.8)':'none'}}>
       {/* Header */}
       <div style={{padding:'20px 20px 16px',borderBottom:`1px solid ${BORDER}`,display:'flex',alignItems:'center',gap:12}}>
         <div style={{fontSize:28,lineHeight:1}}>☀</div>
-        <div><div style={{fontWeight:900,fontSize:16,letterSpacing:-0.5,color:LIME}}>DAYMAN 2.5</div><div style={{fontSize:11,color:MUTED,marginTop:1}}>{user?.email}</div></div>
-        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:MUTED,fontSize:22,cursor:'pointer',lineHeight:1}}>✕</button>
+        <div><div style={{fontWeight:900,fontSize:16,letterSpacing:-0.5,color:LIME}}>DAYMAN 2.6</div><div style={{fontSize:11,color:MUTED,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:150}}>{user?.email}</div></div>
+        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:MUTED,fontSize:22,cursor:'pointer',lineHeight:1,flexShrink:0}}>✕</button>
       </div>
       {/* Nav items */}
       <div style={{flex:1,overflowY:'auto',padding:'12px 0'}}>
-        <div style={{padding:'0 12px 8px',fontSize:9,fontWeight:700,letterSpacing:2,color:'#444',textTransform:'uppercase'}}>Views</div>
-        {NAV_ITEMS.map(t=>(<button key={t.key} onClick={()=>{setTab(t.key);onClose();}} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'11px 16px',background:tab===t.key?t.color+'18':'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',borderLeft:tab===t.key?`3px solid ${t.color}`:'3px solid transparent',transition:'all .15s'}}>
-          <span style={{fontSize:20,width:26,textAlign:'center',flexShrink:0}}>{t.icon}</span>
-          <span style={{fontSize:13,fontWeight:tab===t.key?700:500,color:tab===t.key?t.color:TEXT,letterSpacing:0.3}}>{t.label}</span>
+        <div style={{padding:'0 16px 6px',fontSize:9,fontWeight:700,letterSpacing:2,color:'#444',textTransform:'uppercase'}}>Views</div>
+        {NAV_ITEMS.map(t=>(<button key={t.key} onClick={()=>{setTab(t.key);onClose();}} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:tab===t.key?t.color+'18':'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',borderLeft:tab===t.key?`3px solid ${t.color}`:'3px solid transparent',transition:'all .15s'}}>
+          <span style={{fontSize:18,width:24,textAlign:'center',flexShrink:0,lineHeight:1}}>{t.icon}</span>
+          <span style={{fontSize:13,fontWeight:tab===t.key?700:500,color:tab===t.key?t.color:TEXT,letterSpacing:0.2}}>{t.label}</span>
           {tab===t.key&&<div style={{marginLeft:'auto',width:6,height:6,borderRadius:'50%',background:t.color,flexShrink:0}}/>}
         </button>))}
 
         {/* Settings section */}
-        <div style={{margin:'16px 12px 8px',height:1,background:BORDER}}/>
-        <div style={{padding:'0 12px 8px',fontSize:9,fontWeight:700,letterSpacing:2,color:'#444',textTransform:'uppercase'}}>Settings</div>
-        <div style={{padding:'12px 16px'}}>
-          <div style={{fontSize:10,color:MUTED,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Day Reset Hour</div>
-          <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-            {Array.from({length:13},(_,i)=>i).map(h=>(<button key={h} onClick={()=>onResetHourChange(h)} style={{padding:'5px 9px',borderRadius:6,border:`1px solid ${resetHour===h?LIME:BORDER}`,background:resetHour===h?'#0a140a':'transparent',color:resetHour===h?LIME:MUTED,fontSize:11,cursor:'pointer',fontFamily:'inherit',fontWeight:resetHour===h?700:400}}>{h===0?'12am':`${h}${h<12?'am':'pm'}`}</button>))}
-          </div>
-          <div style={{fontSize:11,color:'#444',marginTop:8,lineHeight:1.4}}>When the next day starts for habits & sprints.</div>
-        </div>
-        <div style={{padding:'0 12px 8px'}}>
-          <div style={{background:'#111',borderRadius:10,border:`1px solid ${BORDER}`,padding:'12px 14px'}}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:MUTED,fontSize:12}}>Version</span><span style={{fontSize:12,fontWeight:700,color:LIME}}>DAYMAN 2.5</span></div>
+        <div style={{margin:'16px 16px 8px',height:1,background:BORDER}}/>
+        <div style={{padding:'0 16px 8px',fontSize:9,fontWeight:700,letterSpacing:2,color:'#444',textTransform:'uppercase'}}>Settings</div>
+        <div style={{padding:'8px 16px'}}>
+          <div style={{background:'#111',borderRadius:10,border:`1px solid ${BORDER}`,padding:'12px 14px',marginBottom:10}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:MUTED,fontSize:12}}>Version</span><span style={{fontSize:12,fontWeight:700,color:LIME}}>DAYMAN 2.6</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:MUTED,fontSize:12}}>Day resets at</span><span style={{fontSize:12,fontWeight:700,color:ORANGE}}>3:00 AM</span></div>
             <div style={{display:'flex',justifyContent:'space-between'}}><span style={{color:MUTED,fontSize:12}}>Database</span><span style={{fontSize:12,color:TEXT}}>MR Supabase</span></div>
           </div>
-        </div>
-        <div style={{padding:'8px 12px'}}>
           <button onClick={onSignOut} style={{width:'100%',padding:'11px',borderRadius:10,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.05)',color:'#ef4444',fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Sign Out</button>
         </div>
       </div>
@@ -3453,27 +3446,185 @@ function SidebarDrawer({open,onClose,tab,setTab,user,resetHour,onResetHourChange
 // ═══════════════════════════════════════════════════════════════════
 // BOTTOM NAV
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// GLOBAL TOP BAR
+// ═══════════════════════════════════════════════════════════════════
+const TAB_META={
+  now:{label:'NOW',color:'#f7c94f'},
+  habits:{label:'HABITS',color:GREEN},
+  sprint:{label:'SPRINT',color:LIME},
+  countdown:{label:'COUNTDOWN',color:BLUE},
+  freq:{label:'FREQ',color:ORANGE},
+  all:{label:'ALL',color:'#c084fc'},
+  tasks:{label:'TASKS',color:LIME},
+  brands:{label:'BRANDS',color:LIME},
+};
+function TopBar({tab,onMenuOpen,children}){
+  const meta=TAB_META[tab]||{label:tab.toUpperCase(),color:LIME};
+  return(
+    <div style={{flexShrink:0,height:48,display:'flex',alignItems:'center',borderBottom:`1px solid ${BORDER}`,background:'#000',padding:'0 4px 0 0'}}>
+      <button onClick={onMenuOpen} style={{width:48,height:48,background:'none',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:MUTED,flexShrink:0}}>
+        <svg width="20" height="14" viewBox="0 0 20 14" fill="none"><rect width="20" height="2" rx="1" fill="currentColor"/><rect y="6" width="20" height="2" rx="1" fill="currentColor"/><rect y="12" width="20" height="2" rx="1" fill="currentColor"/></svg>
+      </button>
+      <span style={{fontWeight:900,fontSize:15,letterSpacing:-0.5,color:meta.color,flex:1}}>{meta.label}</span>
+      {children}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ALL TASKS SECTION
+// ═══════════════════════════════════════════════════════════════════
+function AllTasksSection({user}){
+  const [tasks,setTasks]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [q,setQ]=useState('');
+  const [typeFilter,setTypeFilter]=useState('all');
+  const [editing,setEditing]=useState(null);
+  const [buckets,setBuckets]=useState([]);
+  const [actions,setActions]=useState(DEFAULT_ACTIONS);
+  const [brands_t,setBrandsT]=useState([]);
+  const [persons,setPersons]=useState([]);
+  const [labels,setLabels]=useState([]);
+  const [devices,setDevices]=useState([]);
+  const [sprints_t,setSprintsT]=useState([]);
+  const [celebratingIds,setCelebratingIds]=useState(new Set());
+  const celebRef=useRef(new Set());
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const{data:mem}=await db.from('board_members').select('board_id,boards(id,name)').eq('user_id',user.id);
+    const boardIds=(mem||[]).map(m=>m.boards?.id).filter(Boolean);
+    if(!boardIds.length){setTasks([]);setLoading(false);return;}
+    const[{data:rows},{data:bkRows},{data:srRows}]=await Promise.all([
+      db.from('tasks').select('*').in('board_id',boardIds).eq('done',false),
+      db.from('buckets').select('*').in('board_id',boardIds).order('sort_order'),
+      db.from('board_settings').select('*').in('board_id',boardIds),
+    ]);
+    setTasks((rows||[]).map(dbToTask).sort((a,b)=>a.title.localeCompare(b.title)));
+    setBuckets((bkRows||[]).map(bk=>({id:bk.id,emoji:bk.emoji,label:bk.label,mainColor:bk.color||null,bgColor:bk.bg_color||null,parentId:bk.parent_id||null})));
+    // Load settings from first board that has them
+    const sr=(srRows||[]).find(s=>s.actions_json||s.brands_json);
+    if(sr){
+      if(sr.actions_json){try{setActions(JSON.parse(sr.actions_json));}catch{}}
+      if(sr.brands_json){try{setBrandsT(JSON.parse(sr.brands_json));}catch{}}
+      if(sr.persons_json){try{setPersons(JSON.parse(sr.persons_json));}catch{}}
+      if(sr.labels_json){try{setLabels(JSON.parse(sr.labels_json));}catch{}}
+      if(sr.devices_json){try{setDevices(JSON.parse(sr.devices_json));}catch{}}
+      if(sr.sprints_json){try{setSprintsT(JSON.parse(sr.sprints_json));}catch{}}
+    }
+    setLoading(false);
+  },[user.id]);
+
+  useEffect(()=>{load();},[load]);
+
+  const saveTask=async t=>{
+    const dbRow=t2db(t,t.boardId||t.board_id);
+    if(tasks.some(x=>x.id===t.id)){await db.from('tasks').update(dbRow).eq('id',t.id);}
+    else{await db.from('tasks').insert(dbRow);}
+    setTasks(prev=>prev.some(x=>x.id===t.id)?prev.map(x=>x.id===t.id?t:x):[...prev,t]);
+    setEditing(null);
+  };
+  const deleteTask=async id=>{await db.from('tasks').update({done:true}).eq('id',id);setTasks(prev=>prev.filter(t=>t.id!==id));setEditing(null);};
+  const dupTask=async t=>{const n={...t,id:genId(),title:t.title+' (copy)',manualOrder:Date.now()};await db.from('tasks').insert(t2db(n,n.boardId));setTasks(prev=>[...prev,n].sort((a,b)=>a.title.localeCompare(b.title)));};
+  const checkTask=async id=>{
+    celebRef.current.add(id);setCelebratingIds(new Set(celebRef.current));
+    const t=tasks.find(x=>x.id===id);if(!t)return;
+    const e={id:genId(),doneAt:new Date().toISOString(),note:''};const nd=nextDueDC(t.frequency)||t.dueDate;
+    const updated={...t,completionLog:[...t.completionLog,e],dueDate:nd,status:'list',done:t.frequency?false:true};
+    await db.from('tasks').update(t2db(updated,updated.boardId)).eq('id',id);
+    setTimeout(()=>{celebRef.current.delete(id);setCelebratingIds(new Set(celebRef.current));if(!t.frequency)setTasks(prev=>prev.filter(x=>x.id!==id));else setTasks(prev=>prev.map(x=>x.id===id?updated:x));},1800);
+  };
+
+  const TYPE_FILTERS=[
+    {key:'all',label:'All'},
+    {key:'freq',label:'🔁 Freq'},
+    {key:'crush',label:'🔥 Crush'},
+    {key:'high',label:'⚠ High'},
+    {key:'overdue',label:'🔴 Overdue'},
+    {key:'ref',label:'📎 Ref'},
+  ];
+
+  const filtered=useMemo(()=>{
+    let list=tasks;
+    if(q.trim())list=list.filter(t=>t.title.toLowerCase().includes(q.toLowerCase()));
+    if(typeFilter==='freq')list=list.filter(t=>t.frequency&&t.frequency.trim());
+    else if(typeFilter==='crush')list=list.filter(t=>t.priority==='crush');
+    else if(typeFilter==='high')list=list.filter(t=>t.priority==='high'||t.priority==='crush');
+    else if(typeFilter==='overdue')list=list.filter(t=>t.dueDate&&daysDiff(t.dueDate)<0);
+    else if(typeFilter==='ref')list=list.filter(t=>t.isRef);
+    return list;
+  },[tasks,q,typeFilter]);
+
+  return(<ThemeCtx.Provider value={DARK_THEME}>
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
+      {/* Search + filters */}
+      <div style={{padding:'8px 12px 0',flexShrink:0}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder={`Search ${tasks.length} tasks…`} style={{...bInp,marginBottom:8,fontSize:13}}/>
+        <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:8,scrollbarWidth:'none'}}>
+          {TYPE_FILTERS.map(f=>(<button key={f.key} onClick={()=>setTypeFilter(f.key)} style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${typeFilter===f.key?'#c084fc':BORDER}`,background:typeFilter===f.key?'#c084fc22':'#0a0a0a',color:typeFilter===f.key?'#c084fc':MUTED,fontSize:12,fontWeight:typeFilter===f.key?700:400,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap',flexShrink:0}}>{f.label}</button>))}
+        </div>
+      </div>
+      {/* Count */}
+      <div style={{padding:'0 14px 6px',fontSize:11,color:MUTED,flexShrink:0}}>{filtered.length} task{filtered.length!==1?'s':''}{q||typeFilter!=='all'?` (filtered)`:`—alphabetical`}</div>
+      {/* List */}
+      <div style={{flex:1,overflowY:'auto',paddingBottom:NAV_H+12}}>
+        {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:40}}><Spinner size={22} color={'#c084fc'}/></div>}
+        {!loading&&filtered.length===0&&<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>∞</div><div style={{fontSize:14}}>{q?'No matches':'No tasks'}</div></div>}
+        {!loading&&filtered.map(task=>{
+          const bkt=buckets.find(b=>b.id===task.bucketId);
+          const dl=task.dueDate?dueLabel(task.dueDate):null;
+          const isCelebrating=celebratingIds.has(task.id);
+          return(<div key={task.id} style={{display:'flex',alignItems:'center',gap:0,borderBottom:`1px solid #0a0a0a`,background:isCelebrating?'#0a140a':'transparent',transition:'background .3s'}}>
+            <div onClick={()=>setEditing(task)} style={{flex:1,display:'flex',alignItems:'center',gap:10,padding:'11px 14px',cursor:'pointer',minWidth:0}}>
+              {bkt&&<div style={{width:3,height:32,borderRadius:2,background:bkt.mainColor||MUTED,flexShrink:0}}/>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:600,color:isCelebrating?GREEN:TEXT,textDecoration:isCelebrating?'line-through':'none',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{task.title}</div>
+                <div style={{display:'flex',alignItems:'center',gap:5,marginTop:2,flexWrap:'wrap'}}>
+                  {bkt&&<span style={{fontSize:10,color:bkt.mainColor||MUTED}}>{bkt.emoji} {bkt.label}</span>}
+                  {task.frequency&&<span style={{fontSize:10,color:'#5E5CE6',background:'#5E5CE611',borderRadius:4,padding:'1px 5px'}}>{task.frequency}</span>}
+                  {dl&&!isCelebrating&&<span style={{fontSize:10,color:dl.color,fontWeight:dl.weight}}>{dl.text}</span>}
+                  {task.priority==='crush'&&<span style={{fontSize:10,color:'#FF9F0A'}}>🔥</span>}
+                  {task.priority==='high'&&<span style={{fontSize:10,color:RED}}>⚠</span>}
+                  {task.isRef&&<span style={{fontSize:10,color:MUTED}}>📎</span>}
+                </div>
+              </div>
+            </div>
+            <button onClick={()=>checkTask(task.id)} disabled={isCelebrating} style={{width:52,height:52,display:'flex',alignItems:'center',justifyContent:'center',background:'none',border:'none',borderLeft:`1px solid #111`,cursor:isCelebrating?'default':'pointer',flexShrink:0}}>
+              <div style={{width:32,height:32,borderRadius:9,border:`2px solid ${isCelebrating?GREEN:'#2a2a2a'}`,background:isCelebrating?GREEN:'transparent',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s'}}>
+                <span style={{fontSize:16,color:isCelebrating?'#000':'#333',fontWeight:900}}>✓</span>
+              </div>
+            </button>
+          </div>);
+        })}
+      </div>
+      {editing&&<DCEditMdl task={editing} tasks={tasks} buckets={buckets} actions={actions} brands={brands_t} persons={persons} labels={labels} devices={devices} sprints={sprints_t} onSave={saveTask} onClose={()=>setEditing(null)} onDelete={deleteTask} onDuplicate={dupTask}/>}
+    </div>
+  </ThemeCtx.Provider>);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SIDEBAR DRAWER (already defined above, keeping reference)
+// ═══════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════
+// BOTTOM NAV
+// ═══════════════════════════════════════════════════════════════════
 const TABS=[
   {key:'now',label:'NOW',icon:'☀',color:'#f7c94f'},
   {key:'habits',label:'HABITS',icon:'✓',color:GREEN},
   {key:'sprint',label:'SPRINT',icon:'⚡',color:LIME},
   {key:'countdown',label:'⏳',icon:'⏳',color:BLUE},
   {key:'freq',label:'FREQ',icon:'🔁',color:ORANGE},
-  {key:'tasks',label:'TASKS',icon:'📋',color:LIME},
-  {key:'brands',label:'BRANDS',icon:'🏷',color:LIME},
+  {key:'all',label:'ALL',icon:'∞',color:'#c084fc'},
 ];
-function BottomNav({tab,setTab,onMenuOpen}){
+function BottomNav({tab,setTab}){
   return(<div style={{flexShrink:0,display:'flex',borderTop:`1px solid ${BORDER}`,background:'#000',height:NAV_H}}>
-    {TABS.map(t=>(<button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,padding:'6px 0',fontFamily:'inherit',transition:'opacity .1s',opacity:tab===t.key?1:0.4}}>
+    {TABS.map(t=>(<button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,padding:'6px 0',fontFamily:'inherit',transition:'opacity .1s',opacity:tab===t.key?1:0.4,position:'relative'}}>
       <span style={{fontSize:18,lineHeight:1}}>{t.icon}</span>
-      <span style={{fontSize:9,fontWeight:700,letterSpacing:'0.08em',color:tab===t.key?t.color:MUTED}}>{t.label}</span>
+      <span style={{fontSize:9,fontWeight:700,letterSpacing:'0.06em',color:tab===t.key?t.color:MUTED}}>{t.label}</span>
       {tab===t.key&&<div style={{width:20,height:2,borderRadius:1,background:t.color,position:'absolute',bottom:4}}/>}
     </button>))}
-    {/* Hamburger menu */}
-    <button onClick={onMenuOpen} style={{width:52,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,padding:'6px 0',fontFamily:'inherit',opacity:0.55}}>
-      <span style={{fontSize:18,lineHeight:1}}>☰</span>
-      <span style={{fontSize:9,fontWeight:700,letterSpacing:'0.08em',color:MUTED}}>MENU</span>
-    </button>
   </div>);
 }
 
@@ -3486,9 +3637,8 @@ function App(){
   const [tab,setTab]=useState('habits');
   const [sidebarOpen,setSidebarOpen]=useState(false);
   const switchTab=t=>{setTab(t);if(t==='now')setNowKey(k=>k+1);};
-  const [resetHour,setResetHour]=useState(()=>getResetHour());
+  const resetHour=RESET_HOUR;
   const [nowKey,setNowKey]=useState(0);
-  const updateResetHour=h=>{setResetHour(h);try{localStorage.setItem(RESET_HOUR_LS,String(h));}catch{}};
 
   useEffect(()=>{
     db.auth.getSession().then(({data:{session}})=>{if(session){setUser(session.user);setScreen('main');}else setScreen('auth');});
@@ -3500,17 +3650,19 @@ function App(){
   if(screen==='auth')return<AuthScreen onAuth={u=>{setUser(u);setScreen('main');}}/>;
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
-    <SidebarDrawer open={sidebarOpen} onClose={()=>setSidebarOpen(false)} tab={tab} setTab={switchTab} user={user} resetHour={resetHour} onResetHourChange={updateResetHour} onSignOut={()=>db.auth.signOut()}/>
+    <SidebarDrawer open={sidebarOpen} onClose={()=>setSidebarOpen(false)} tab={tab} setTab={switchTab} user={user} onSignOut={()=>db.auth.signOut()}/>
+    <TopBar tab={tab} onMenuOpen={()=>setSidebarOpen(true)}/>
     <div style={{flex:1,overflow:'hidden',position:'relative'}}>
       <div style={{display:tab==='now'?'block':'none',height:'100%'}}>{user&&<NowSection key={nowKey} user={user} resetHour={resetHour} onNavigate={switchTab}/>}</div>
       <div style={{display:tab==='sprint'?'block':'none',height:'100%'}}>{user&&<SprintSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='habits'?'block':'none',height:'100%'}}>{user&&<HabitsSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='countdown'?'block':'none',height:'100%'}}>{user&&<CountdownSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='freq'?'block':'none',height:'100%'}}>{user&&<FreqSection user={user} resetHour={resetHour}/>}</div>
+      <div style={{display:tab==='all'?'block':'none',height:'100%'}}>{user&&<AllTasksSection user={user}/>}</div>
       <div style={{display:tab==='tasks'?'block':'none',height:'100%'}}>{user&&<TasksSection user={user}/>}</div>
       <div style={{display:tab==='brands'?'block':'none',height:'100%'}}>{user&&<BrandsSection user={user}/>}</div>
     </div>
-    <BottomNav tab={tab} setTab={switchTab} onMenuOpen={()=>setSidebarOpen(true)}/>
+    <BottomNav tab={tab} setTab={switchTab}/>
   </div>);
 }
 

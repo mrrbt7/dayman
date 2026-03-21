@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#000000"/>
-<title>DAYMAN 2.4</title>
+<title>DAYMAN 2.5</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -144,6 +144,26 @@ const nextOccurrence=(dateStr,recurring)=>{
     let candidate=new Date(yr,mo,dayOfMonth);
     if(candidate<=today){mo++;if(mo>11){mo=0;yr++;} candidate=new Date(yr,mo,dayOfMonth);}
     return localDateStr(candidate);
+  }
+  // "MM-DD" = yearly on that specific month+day (e.g. "03-03" = March 3rd every year)
+  const mdM=String(recurring).match(/^(\d{1,2})-(\d{1,2})$/);
+  if(mdM){
+    const mo=parseInt(mdM[1])-1;const day=parseInt(mdM[2]);
+    let yr=today.getFullYear();let c=new Date(yr,mo,day);
+    if(c<=today)c=new Date(yr+1,mo,day);
+    return localDateStr(c);
+  }
+  // Month-name format: "march 3", "jan 15", "december 25" etc.
+  const MNAMES=['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const mnameM=String(recurring).match(/^([a-z]+)\s+(\d{1,2})$/i);
+  if(mnameM){
+    const mo=MNAMES.findIndex(m=>m.startsWith(mnameM[1].toLowerCase()));
+    const day=parseInt(mnameM[2]);
+    if(mo>=0&&day>=1&&day<=31){
+      let yr=today.getFullYear();let c=new Date(yr,mo,day);
+      if(c<=today)c=new Date(yr+1,mo,day);
+      return localDateStr(c);
+    }
   }
   let d=new Date(dateStr+'T00:00:00');
   if(recurring==='weekly'){while(d<=today)d.setDate(d.getDate()+7);}
@@ -1474,7 +1494,7 @@ function HabitsSection({user,resetHour=4}){
 // ═══════════════════════════════════════════════════════════════════
 // COUNTDOWN SECTION
 // ═══════════════════════════════════════════════════════════════════
-const CD_RECURRINGS=[{key:null,label:'One-time'},{key:'weekly',label:'📅 Weekly'},{key:'monthly',label:'🗓 Monthly'},{key:'yearly',label:'🔁 Yearly'},{key:'every 1',label:'Every 1st'},{key:'every 15',label:'Every 15th'},{key:'every 25',label:'Every 25th'},{key:'custom_day',label:'Every Nth…'}];
+const CD_RECURRINGS=[{key:null,label:'One-time'},{key:'weekly',label:'📅 Weekly'},{key:'monthly',label:'🗓 Monthly'},{key:'yearly',label:'🔁 Yearly'},{key:'every 1',label:'Every 1st'},{key:'every 15',label:'Every 15th'},{key:'every 25',label:'Every 25th'},{key:'custom_day',label:'Every Nth…'},{key:'custom_yearly',label:'📅 Yearly on Date…'}];
 
 function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
   const [name,setName]=useState(item?.name||'');
@@ -1482,15 +1502,18 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
   const [date,setDate]=useState(item?.target_date||'');
   const [firstDate,setFirstDate]=useState(item?.first_date||'');
   const [cat,setCat]=useState(item?.category||'countdown');
-  const [recurring,setRecur]=useState(item?.recurring||null);
+  const [recurring,setRecurring]=useState(()=>{const r=item?.recurring||null;if(r&&(r.match(/^\d{1,2}-\d{1,2}$/)||r.match(/^[a-z]+\s+\d{1,2}$/i)))return'custom_yearly';if(r&&r.match(/^every \d+$/))return'custom_day';return r;});
   const [direction,setDirection]=useState(item?.direction||defaultDirection||'countdown');
   const [cdLink,setCdLink]=useState(item?.link||'');
   const [cdNotes,setCdNotes]=useState(item?.notes||'');
   const [customDay,setCustomDay]=useState(()=>{const m=(item?.recurring||'').match(/^every (\d+)$/);return m?m[1]:'';});
+  const [customYearlyMonth,setCustomYearlyMonth]=useState(()=>{const r=item?.recurring||'';const md=r.match(/^(\d{1,2})-(\d{1,2})$/);if(md)return md[1];const mn=r.match(/^([a-z]+)\s+(\d{1,2})$/i);if(mn){const months=['january','february','march','april','may','june','july','august','september','october','november','december'];const mo=months.findIndex(m=>m.startsWith(mn[1].toLowerCase()));return String(mo+1).padStart(2,'0');}return '';});
+  const [customYearlyDay,setCustomYearlyDay]=useState(()=>{const r=item?.recurring||'';const md=r.match(/^(\d{1,2})-(\d{1,2})$/);if(md)return md[2];const mn=r.match(/^([a-z]+)\s+(\d{1,2})$/i);if(mn)return mn[2];return '';});
   const [saving,setSaving]=useState(false);
   const isCountUp=direction==='countup';
-  const effectiveRecur=eRecur_==='custom_day'?`every ${customDay||'1'}`:eRecur_;
+  const effectiveRecur=recurring==='custom_day'?`every ${customDay||'1'}`:recurring==='custom_yearly'?(customYearlyMonth&&customYearlyDay?`${String(customYearlyMonth).padStart(2,'0')}-${String(customYearlyDay).padStart(2,'0')}`:null):recurring;
   const habit_col=CD_COLORS[cat]||BLUE;
+  const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const save=async()=>{if(!name.trim()||!date)return;setSaving(true);await onSave({name:name.trim(),emoji:cdEmoji||null,target_date:date,first_date:firstDate||null,category:cat,recurring:effectiveRecur,direction,link:cdLink||null,notes:cdNotes||null});setSaving(false);};
   return(<Sheet onClose={onClose} title={item?(isCountUp?'Edit Count-Up':'Edit Countdown'):(isCountUp?'New Count-Up':'New Countdown')}>
     <FormInput label="Type">
@@ -1518,8 +1541,16 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
       </FormInput>
       <FormInput label="Recurring">
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          {CD_RECURRINGS.map(r=>(<button key={String(r.key)} onClick={()=>setERecur_(r.key)} style={{background:eRecur_===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${eRecur_===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eRecur_===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
-          {eRecur_==='custom_day'&&<input type="number" min="1" max="31" value={customDay} onChange={e=>setCustomDay(e.target.value)} placeholder="Day # (1-31)" style={{...inp(),marginTop:8,width:140}} />}
+          {CD_RECURRINGS.map(r=>(<button key={String(r.key)} onClick={()=>setRecurring(r.key)} style={{background:recurring===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${recurring===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:recurring===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
+          {recurring==='custom_day'&&<input type="number" min="1" max="31" value={customDay} onChange={e=>setCustomDay(e.target.value)} placeholder="Day # (1-31)" style={{...inp(),marginTop:8,width:140}} />}
+          {recurring==='custom_yearly'&&(<div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
+            <select value={customYearlyMonth} onChange={e=>setCustomYearlyMonth(e.target.value)} style={{...inp(),flex:1,cursor:'pointer'}}>
+              <option value="">Month</option>
+              {MONTH_NAMES.map((m,i)=><option key={i+1} value={String(i+1).padStart(2,'0')}>{m}</option>)}
+            </select>
+            <input type="number" min="1" max="31" value={customYearlyDay} onChange={e=>setCustomYearlyDay(e.target.value)} placeholder="Day" style={{...inp(),width:80}}/>
+            {customYearlyMonth&&customYearlyDay&&<span style={{fontSize:11,color:BLUE,whiteSpace:'nowrap'}}>→ Every {MONTH_NAMES[parseInt(customYearlyMonth)-1]} {customYearlyDay}</span>}
+          </div>)}
         </div>
       </FormInput>
     </>)}
@@ -1687,7 +1718,11 @@ function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved})
   const [eDate,setEDate]=useState(item.target_date||'');
   const [eFirstDate,setEFirstDate]=useState(item.first_date||'');
   const [eCat,setECat]=useState(item.category||'countdown');
-  const [eRecur,setERecur]=useState(item.recurring||null);
+  const [eRecurType,setERecurType]=useState(()=>{const r=item.recurring||null;if(r&&(r.match(/^\d{1,2}-\d{1,2}$/)||r.match(/^[a-z]+\s+\d{1,2}$/i)))return'custom_yearly';if(r&&r.match(/^every \d+$/))return'custom_day';return r;});
+  const [eRecurCustomDay,setERecurCustomDay]=useState(()=>{const m=(item.recurring||'').match(/^every (\d+)$/);return m?m[1]:'';});
+  const [eRecurYearlyMonth,setERecurYearlyMonth]=useState(()=>{const r=item.recurring||'';const md=r.match(/^(\d{1,2})-(\d{1,2})$/);if(md)return md[1];return '';});
+  const [eRecurYearlyDay,setERecurYearlyDay]=useState(()=>{const r=item.recurring||'';const md=r.match(/^(\d{1,2})-(\d{1,2})$/);if(md)return md[2];return '';});
+  const eRecur=eRecurType==='custom_day'?`every ${eRecurCustomDay||'1'}`:eRecurType==='custom_yearly'?(eRecurYearlyMonth&&eRecurYearlyDay?`${String(eRecurYearlyMonth).padStart(2,'0')}-${String(eRecurYearlyDay).padStart(2,'0')}`:null):eRecurType;
   const [eDirection,setEDirection]=useState(item.direction||'countdown');
   const [eLink,setELink]=useState(item.link||'');
   const [eNotes,setENotes]=useState(item.notes||'');
@@ -1785,8 +1820,19 @@ function CDDetailScreen({item:itemProp,onClose,onMarkComplete,onDelete,onSaved})
           </FormInput>
           <FormInput label="Recurring">
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-              {CD_RECURRINGS.filter(r=>r.key!=='custom_day').map(r=>(<button key={String(r.key)} onClick={()=>setERecur(r.key)} style={{background:eRecur===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${eRecur===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eRecur===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
-          <input type="text" value={eRecur||''} onChange={e=>setERecur(e.target.value)} placeholder="Or type: every 15, every 1…" style={{...inp(),marginTop:8}}/>
+              {CD_RECURRINGS.filter(r=>r.key!=='custom_day'&&r.key!=='custom_yearly').map(r=>(<button key={String(r.key)} onClick={()=>setERecurType(r.key)} style={{background:eRecurType===r.key?'#1a2535':'#1a1a1a',border:`1px solid ${eRecurType===r.key?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eRecurType===r.key?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>{r.label}</button>))}
+              <button onClick={()=>setERecurType('custom_day')} style={{background:eRecurType==='custom_day'?'#1a2535':'#1a1a1a',border:`1px solid ${eRecurType==='custom_day'?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eRecurType==='custom_day'?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>Every Nth…</button>
+              <button onClick={()=>setERecurType('custom_yearly')} style={{background:eRecurType==='custom_yearly'?'#1a2535':'#1a1a1a',border:`1px solid ${eRecurType==='custom_yearly'?BLUE:'#2a2a2a'}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:eRecurType==='custom_yearly'?TEXT:MUTED,cursor:'pointer',fontFamily:'inherit'}}>📅 Yearly on Date…</button>
+              {eRecurType==='custom_day'&&<input type="number" min="1" max="31" value={eRecurCustomDay} onChange={e=>setERecurCustomDay(e.target.value)} placeholder="Day # (1-31)" style={{...inp(),marginTop:8,width:140}}/>}
+              {eRecurType==='custom_yearly'&&(<div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
+                <select value={eRecurYearlyMonth} onChange={e=>setERecurYearlyMonth(e.target.value)} style={{...inp(),flex:1,cursor:'pointer'}}>
+                  <option value="">Month</option>
+                  {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m,i)=><option key={i+1} value={String(i+1).padStart(2,'0')}>{m}</option>)}
+                </select>
+                <input type="number" min="1" max="31" value={eRecurYearlyDay} onChange={e=>setERecurYearlyDay(e.target.value)} placeholder="Day" style={{...inp(),width:80}}/>
+                {eRecurYearlyMonth&&eRecurYearlyDay&&<span style={{fontSize:11,color:BLUE,whiteSpace:'nowrap'}}>→ Every {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(eRecurYearlyMonth)-1]} {eRecurYearlyDay}</span>}
+              </div>)}
+          <input type="text" value={eRecur||''} onChange={e=>{setERecurType(e.target.value||null);}} placeholder="Or type: every 15, every 1…" style={{...inp(),marginTop:8}}/>
             </div>
           </FormInput>
         </>)}
@@ -1841,6 +1887,7 @@ function FreqTaskDetail({task,boards,onClose,onSave,onDelete,onMarkDone}){
   const [isRef,setIsRef]=useState(r.is_ref||false);
   const [mundane,setMundane]=useState(r.mundane||false);
   const [labelsStr,setLabelsStr]=useState((r.labels||[]).join(', '));
+  const [lastCompleted,setLastCompleted]=useState(ld||'');
   const [saving,setSaving]=useState(false);
   const PRIS=[{k:'crush',l:'🔥 Crush',c:'#FF9F0A'},{k:'high',l:'High',c:RED},{k:'normal',l:'Normal',c:MUTED},{k:'low',l:'Low',c:BLUE}];
   const STATUSES=[{k:'inprogress',l:'In Progress',c:'#0A84FF'},{k:'nextup',l:'Next Up',c:'#5E5CE6'},{k:'do',l:'To Do',c:LIME},{k:'list',l:'List',c:'#888'}];
@@ -1849,7 +1896,12 @@ function FreqTaskDetail({task,boards,onClose,onSave,onDelete,onMarkDone}){
   const save=async()=>{
     setSaving(true);
     const labelsArr=labelsStr.split(',').map(s=>s.trim()).filter(Boolean);
-    await onSave(r.id,{title,frequency:freq||null,notes,priority,status,due_date:dueDate||null,event_date:eventDate||null,time:time||null,duration:duration||null,link:link||null,keep_link:keepLink||null,action:action||null,brand:brand||null,gameday:gameday||null,device:device||null,person:person||null,sprint_id:sprintId||null,notify_mins:notifyMins!==''?parseInt(notifyMins):null,is_ref:isRef,mundane,labels:labelsArr});
+    // Handle lastCompleted update — add entry if date changed
+    let updCl=r.completion_log||[];
+    if(lastCompleted&&lastCompleted!==ld){
+      updCl=[...updCl,{id:genId(),doneAt:lastCompleted+'T12:00:00.000Z',note:''}];
+    }
+    await onSave(r.id,{title,frequency:freq||null,notes,priority,status,due_date:dueDate||null,event_date:eventDate||null,time:time||null,duration:duration||null,link:link||null,keep_link:keepLink||null,action:action||null,brand:brand||null,gameday:gameday||null,device:device||null,person:person||null,sprint_id:sprintId||null,notify_mins:notifyMins!==''?parseInt(notifyMins):null,is_ref:isRef,mundane,labels:labelsArr,completion_log:updCl});
     setSaving(false);
   };
   const fi={...inp(),marginBottom:0};
@@ -1892,7 +1944,10 @@ function FreqTaskDetail({task,boards,onClose,onSave,onDelete,onMarkDone}){
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
         <FormInput label="Due Date"><input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={fi}/></FormInput>
-        <FormInput label="Event Date"><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} style={fi}/></FormInput>
+        <FormInput label="Last Completed">
+          <input type="date" value={lastCompleted} onChange={e=>setLastCompleted(e.target.value)} style={{...fi,color:lastCompleted?GREEN:MUTED}}/>
+          {lastCompleted&&<div style={{fontSize:10,color:GREEN,marginTop:3}}>✓ {fmtDateShort(lastCompleted)}</div>}
+        </FormInput>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
         <FormInput label="Time"><input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...fi,color:time?ORANGE:MUTED}}/></FormInput>
@@ -1957,10 +2012,17 @@ function FreqSection({user,resetHour=4}){
     const mapped=(rows||[]).filter(r=>r.frequency&&freqDays(r.frequency)!==null).map(r=>{
       rawMap[r.id]=r;
       const fd=freqDays(r.frequency);const cl=r.completion_log||[];
-      const sd=daysSinceDone(cl);const over=(fd!==null&&sd!==null&&sd>fd)?sd-fd:null;
-      const due=fd!==null&&sd!==null&&sd===fd;
-      // daysUntilDue: negative = overdue, 0 = due today, positive = days left
-      const daysUntilDue=fd!==null&&sd!==null?(fd-sd):null;
+      const sd=daysSinceDone(cl);
+      // Use due_date field directly when available; fall back to completion_log math
+      let daysUntilDue;
+      if(r.due_date){
+        const td=new Date(todayStr()+'T00:00:00');const dd=new Date(r.due_date+'T00:00:00');
+        daysUntilDue=Math.round((dd-td)/86400000);
+      }else{
+        daysUntilDue=fd!==null&&sd!==null?(fd-sd):null;
+      }
+      const over=daysUntilDue!==null&&daysUntilDue<0?Math.abs(daysUntilDue):null;
+      const due=daysUntilDue===0;
       return{id:r.id,title:r.title||'Untitled',freq:fd,since:sd,over,due,daysUntilDue,isDo:sd===null||over!==null||due};
     });
     setRaw(rawMap);setTasks(mapped);setLoading(false);
@@ -2280,8 +2342,9 @@ function BrandsSection({user}){
 function NowSection({user,resetHour=4,onNavigate}){
   const [items,setItems]=useState([]);
   const [loading,setLoading]=useState(true);
+  const [doneIds,setDoneIds]=useState(new Set());
   const today=useMemo(()=>localDateStr(),[]);
-  const todayDow=new Date().getDay();// 0=Sun..6=Sat
+  const todayDow=new Date().getDay();
   const todayAbbr_=['SUN','MON','TUE','WED','THU','FRI','SAT'][todayDow];
 
   const load=useCallback(async()=>{
@@ -2362,6 +2425,30 @@ function NowSection({user,resetHour=4,onNavigate}){
     return SECTION_ORDER.filter(s=>map[s]?.length).map(s=>({label:s,emoji:SECTION_EMOJI[s],items:map[s]}));
   },[items]);
 
+  const markItemDone=useCallback(async(item,e)=>{
+    e.stopPropagation();
+    const id=item.id;
+    if(doneIds.has(id))return;
+    setDoneIds(prev=>{const n=new Set(prev);n.add(id);return n;});
+    try{
+      if(item.type==='habit'){
+        const habitId=id.replace('hb_','');
+        await db.from('habit_logs').upsert({user_id:user.id,habit_id:habitId,log_date:today,value:1},{onConflict:'habit_id,log_date'});
+      }else if(item.type==='sprint'){
+        const sprintId=id.replace('sp_','');const resetH=resetHour??4;const todayK=todayKey(resetH);
+        await db.from('sprints_v2').update({daily_state:{done:true,date:todayK}}).eq('id',sprintId).eq('user_id',user.id);
+      }else if(item.type==='freq'){
+        const taskId=id.replace('fq_','');
+        const{data:t}=await db.from('tasks').select('completion_log,frequency').eq('id',taskId).single();
+        if(t){const cl=[...(t.completion_log||[]),{id:genId(),doneAt:new Date().toISOString(),note:''}];const nd=nextDue(t.frequency);await db.from('tasks').update({completion_log:cl,due_date:nd,status:'list'}).eq('id',taskId);}
+      }else if(item.type==='countdown'){
+        const cdId=id.replace('cd_','');
+        await db.from('countdowns').update({last_completed:today}).eq('id',cdId);
+      }
+    }catch(err){console.error(err);}
+    setTimeout(()=>setItems(prev=>prev.filter(i=>i.id!==id)),1200);
+  },[doneIds,today,user.id,resetHour]);
+
   const TYPE_BADGE={
     sprint:{label:'SPRINT',color:LIME},
     habit:{label:'HABIT',color:GREEN},
@@ -2390,29 +2477,38 @@ function NowSection({user,resetHour=4,onNavigate}){
         </div>
         {sec.items.map(item=>{
           const badge=TYPE_BADGE[item.type];
-          return(<button key={item.id} onClick={()=>onNavigate(TYPE_TAB[item.type])} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:`1px solid #0a0a0a`,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',transition:'background .1s'}} onMouseEnter={e=>e.currentTarget.style.background='#0c0c0c'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-            {/* Left: time or spacer */}
-            <div style={{width:52,flexShrink:0,textAlign:'right'}}>
-              {item.time
-                ?<span style={{fontSize:13,fontWeight:700,color:item.color,fontVariantNumeric:'tabular-nums'}}>{fmtTime12(item.time)}</span>
-                :<span style={{fontSize:11,color:'#333'}}>—</span>}
-            </div>
-            {/* Emoji/icon */}
-            <div style={{width:32,height:32,borderRadius:8,background:item.color+'22',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:17}}>
-              {item.emoji||<div style={{width:10,height:10,borderRadius:'50%',background:item.color}}/>}
-            </div>
-            {/* Name + subtitle */}
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:TASK_FS,fontWeight:600,color:TEXT,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.label}</div>
-              {item.subtitle&&<div style={{fontSize:10,color:item.color,marginTop:1,fontWeight:600}}>{item.subtitle}</div>}
-            </div>
-            {/* Type badge */}
-            <div style={{flexShrink:0,padding:'3px 7px',borderRadius:5,border:`1px solid ${badge.color}33`,background:badge.color+'11'}}>
-              <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:badge.color}}>{badge.label}</span>
-            </div>
-            {/* Arrow */}
-            <span style={{color:'#333',fontSize:14,flexShrink:0}}>›</span>
-          </button>);
+          const isDone=doneIds.has(item.id);
+          return(<div key={item.id} style={{display:'flex',alignItems:'center',gap:0,borderBottom:`1px solid #0a0a0a`,background:isDone?'#0a140a':'transparent',transition:'background .3s'}}>
+            {/* Main row — navigate */}
+            <button onClick={()=>!isDone&&onNavigate(TYPE_TAB[item.type])} style={{flex:1,display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:'transparent',border:'none',cursor:isDone?'default':'pointer',fontFamily:'inherit',textAlign:'left',opacity:isDone?0.5:1,transition:'opacity .3s'}}>
+              {/* Left: time or spacer */}
+              <div style={{width:52,flexShrink:0,textAlign:'right'}}>
+                {item.time
+                  ?<span style={{fontSize:13,fontWeight:700,color:isDone?GREEN:item.color,fontVariantNumeric:'tabular-nums'}}>{fmtTime12(item.time)}</span>
+                  :<span style={{fontSize:11,color:'#333'}}>—</span>}
+              </div>
+              {/* Emoji/icon */}
+              <div style={{width:32,height:32,borderRadius:8,background:(isDone?GREEN:item.color)+'22',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:17}}>
+                {isDone?'✓':(item.emoji||<div style={{width:10,height:10,borderRadius:'50%',background:item.color}}/>)}
+              </div>
+              {/* Name + subtitle */}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:TASK_FS,fontWeight:600,color:isDone?GREEN:TEXT,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textDecoration:isDone?'line-through':'none'}}>{item.label}</div>
+                {!isDone&&item.subtitle&&<div style={{fontSize:10,color:item.color,marginTop:1,fontWeight:600}}>{item.subtitle}</div>}
+                {isDone&&<div style={{fontSize:10,color:GREEN,marginTop:1,fontWeight:700}}>Done!</div>}
+              </div>
+              {/* Type badge */}
+              {!isDone&&<div style={{flexShrink:0,padding:'3px 7px',borderRadius:5,border:`1px solid ${badge.color}33`,background:badge.color+'11'}}>
+                <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:badge.color}}>{badge.label}</span>
+              </div>}
+            </button>
+            {/* Big DONE checkmark button */}
+            <button onClick={e=>markItemDone(item,e)} disabled={isDone} style={{width:56,height:'100%',minHeight:56,display:'flex',alignItems:'center',justifyContent:'center',background:'none',border:'none',borderLeft:`1px solid #111`,cursor:isDone?'default':'pointer',flexShrink:0,transition:'all .2s'}}>
+              <div style={{width:36,height:36,borderRadius:10,border:`2px solid ${isDone?GREEN:'#2a2a2a'}`,background:isDone?GREEN:'transparent',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s',boxShadow:isDone?`0 0 12px ${GREEN}55`:'none'}}>
+                <span style={{fontSize:18,color:isDone?'#000':'#333',fontWeight:900,lineHeight:1}}>✓</span>
+              </div>
+            </button>
+          </div>);
         })}
       </div>))}
     </div>
@@ -2921,23 +3017,185 @@ function DCBucketMgr({buckets,onSave,onClose}){
   </div>);
 }
 
-// ─── IMPORT MODAL (CSV/paste) ────────────────────────────────────────
+// ─── IMPORT MODAL (CSV/paste/CIN JSON) ────────────────────────────────────────
 function DCImportModal({boardId,buckets,onImport,onClose}){
-  const [raw,setRaw]=useState("");const [preview,setPreview]=useState([]);const [importing,setImporting]=useState(false);
-  const PRIOS=["normal","low","high","crush"];
-  const parse=()=>{const lines=raw.split("\n").map(l=>l.trim()).filter(Boolean);const tasks=lines.map(l=>{const t=mkTask("list",boardId);t.title=l;return t;});setPreview(tasks);};
+  const [mode,setMode]=useState('text');// 'text' | 'cin'
+  const [raw,setRaw]=useState("");
+  const [preview,setPreview]=useState([]);
+  const [importing,setImporting]=useState(false);
+  const [cinJson,setCinJson]=useState(null);
+  const [cinError,setCinError]=useState('');
+  const [cinBucketMap,setCinBucketMap]=useState({});// cinBucketName -> local bucketId
+  const [cinStatusMap,setCinStatusMap]=useState({});// cin status -> local status
+  const [cinStats,setCinStats]=useState(null);
+  const fileRef=useRef(null);
+
+  const CIN_STATUS_OPTS=['inprogress','nextup','do','list'];
+
+  const parseCIN=jsonStr=>{
+    try{
+      const data=JSON.parse(jsonStr);
+      // Support: array of tasks, or {tasks:[...]}, or {boards:[{tasks:[...]}]}
+      let tasks=[];
+      if(Array.isArray(data))tasks=data;
+      else if(data.tasks&&Array.isArray(data.tasks))tasks=data.tasks;
+      else if(data.boards&&Array.isArray(data.boards)){data.boards.forEach(b=>{if(b.tasks)tasks=[...tasks,...b.tasks];});}
+      else{// Try to find any array that looks like tasks
+        const keys=Object.keys(data);for(const k of keys){if(Array.isArray(data[k])&&data[k].length>0&&data[k][0].title){tasks=data[k];break;}}
+      }
+      if(!tasks.length){setCinError('No tasks found in JSON. Expected array of tasks or {tasks:[...]} or {boards:[{tasks:[...]}]}');return;}
+      // Extract unique bucket names
+      const bnames=new Set();
+      const statuses=new Set();
+      tasks.forEach(t=>{
+        if(t.bucket||t.bucket_name||t.bucketName||t.bucket_label)bnames.add(t.bucket||t.bucket_name||t.bucketName||t.bucket_label);
+        if(t.status)statuses.add(t.status);
+      });
+      setCinJson(tasks);
+      setCinStats({total:tasks.length,buckets:[...bnames],statuses:[...statuses]});
+      // Default bucket mapping: try to match names
+      const bMap={};[...bnames].forEach(name=>{const match=buckets.find(b=>b.label?.toLowerCase()===name?.toLowerCase());bMap[name]=match?.id||'';});
+      setCinBucketMap(bMap);
+      // Default status mapping
+      const sMap={};[...statuses].forEach(s=>{sMap[s]=CIN_STATUS_OPTS.includes(s)?s:'list';});
+      setCinStatusMap(sMap);
+      setCinError('');
+    }catch(e){setCinError('Invalid JSON: '+e.message);}
+  };
+
+  const buildCINPreview=()=>{
+    if(!cinJson)return;
+    const tasks=cinJson.map(t=>{
+      const bucketName=t.bucket||t.bucket_name||t.bucketName||t.bucket_label||'';
+      const bucketId=bucketName?cinBucketMap[bucketName]||null:null;
+      const status=cinStatusMap[t.status]||t.status||'list';
+      const task=mkTask(status,boardId);
+      task.title=t.title||t.name||'Untitled';
+      task.notes=t.notes||t.description||'';
+      task.priority=t.priority||'normal';
+      task.bucketId=bucketId||null;
+      task.dueDate=t.due_date||t.dueDate||null;
+      task.frequency=t.frequency||'';
+      task.link=t.link||t.url||'';
+      task.action=t.action||'';
+      task.brand=t.brand||'';
+      task.person=t.person||'';
+      task.device=t.device||'';
+      task.labels=Array.isArray(t.labels)?t.labels:[];
+      task.isRef=t.is_ref||t.isRef||false;
+      task.mundane=t.mundane||false;
+      task.completionLog=Array.isArray(t.completion_log)?t.completion_log:[];
+      return task;
+    });
+    setPreview(tasks);
+  };
+
+  const parseText=()=>{
+    const lines=raw.split("\n").map(l=>l.trim()).filter(Boolean);
+    // Detect CSV with headers
+    if(lines.length>1&&lines[0].includes(',')){
+      const headers=lines[0].toLowerCase().split(',').map(h=>h.trim().replace(/"/g,''));
+      const tasks=lines.slice(1).map(line=>{
+        const vals=line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
+        const row={};headers.forEach((h,i)=>row[h]=vals[i]||'');
+        const t=mkTask(row.status&&CIN_STATUS_OPTS.includes(row.status)?row.status:'list',boardId);
+        t.title=row.title||row.name||line;
+        t.notes=row.notes||row.description||'';
+        t.priority=row.priority||'normal';
+        t.dueDate=row.due_date||row.duedate||null;
+        t.frequency=row.frequency||'';
+        t.link=row.link||row.url||'';
+        return t;
+      });
+      setPreview(tasks);
+    }else{
+      const tasks=lines.map(l=>{const t=mkTask("list",boardId);t.title=l;return t;});
+      setPreview(tasks);
+    }
+  };
+
   const doImport=async()=>{setImporting(true);await onImport(preview);setImporting(false);onClose();};
+
   return(<DCModal onClose={onClose}>
     <div style={{padding:20}}>
-      <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>Import Tasks</div>
-      <div style={{fontSize:11,color:MUTED,marginBottom:14}}>One task per line. All imported to LIST status. Edit after import to add dates/frequency.</div>
-      <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={8} placeholder="Paste tasks here, one per line…" style={{...bInp,resize:"vertical",lineHeight:1.5}}/>
-      {preview.length>0&&(<div style={{marginBottom:14}}><div style={{fontSize:11,fontWeight:700,color:MUTED,marginBottom:8}}>{preview.length} TASKS TO IMPORT</div>{preview.slice(0,8).map((t,i)=><div key={i} style={{fontSize:12,color:TEXT,padding:"4px 0",borderBottom:`1px solid #141414`}}>{t.title}</div>)}{preview.length>8&&<div style={{fontSize:11,color:MUTED,marginTop:4}}>…and {preview.length-8} more</div>}</div>)}
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-        <button onClick={onClose} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${BORDER}`,background:"#1c1c1e",cursor:"pointer",color:MUTED,fontFamily:"inherit",fontSize:12}}>Cancel</button>
-        {!preview.length&&<button onClick={parse} disabled={!raw.trim()} style={{padding:"8px 18px",borderRadius:8,border:"none",background:raw.trim()?LIME:"#2a2a2a",color:raw.trim()?"#000":MUTED,fontWeight:700,cursor:raw.trim()?"pointer":"default",fontFamily:"inherit",fontSize:12}}>Parse</button>}
-        {preview.length>0&&<button onClick={doImport} disabled={importing} style={{padding:"8px 18px",borderRadius:8,border:"none",background:LIME,color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>{importing?"Importing…":`Import ${preview.length} Tasks`}</button>}
+      <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>Import Tasks</div>
+      {/* Mode tabs */}
+      <div style={{display:'flex',gap:8,marginBottom:16}}>
+        {[['text','📝 Text / CSV'],['cin','📦 CIN JSON Export']].map(([k,l])=>(
+          <button key={k} onClick={()=>{setMode(k);setPreview([]);}} style={{flex:1,padding:'8px',borderRadius:8,border:`1px solid ${mode===k?LIME:BORDER}`,background:mode===k?'#0a1a0a':'#111',color:mode===k?LIME:MUTED,fontWeight:mode===k?700:400,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{l}</button>
+        ))}
       </div>
+
+      {mode==='text'&&(<>
+        <div style={{fontSize:11,color:MUTED,marginBottom:10}}>Paste one task per line, or a CSV with a "title" column header.</div>
+        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={8} placeholder={"Task one\nTask two\n\nOR CSV:\ntitle,due_date,priority,frequency\nBuy milk,2024-12-01,normal,7"} style={{...bInp,resize:'vertical',lineHeight:1.5,fontFamily:'monospace',fontSize:12}}/>
+        {preview.length>0&&(<div style={{marginBottom:14,background:'#0a0a0a',borderRadius:8,padding:'10px 12px',border:`1px solid ${BORDER}`}}>
+          <div style={{fontSize:11,fontWeight:700,color:LIME,marginBottom:8}}>{preview.length} TASKS TO IMPORT</div>
+          {preview.slice(0,6).map((t,i)=><div key={i} style={{fontSize:12,color:TEXT,padding:'3px 0',borderBottom:`1px solid #141414`}}>{t.title}{t.dueDate&&<span style={{color:MUTED,fontSize:10,marginLeft:8}}>{t.dueDate}</span>}</div>)}
+          {preview.length>6&&<div style={{fontSize:11,color:MUTED,marginTop:4}}>…and {preview.length-6} more</div>}
+        </div>)}
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button onClick={onClose} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${BORDER}`,background:'#1c1c1e',cursor:'pointer',color:MUTED,fontFamily:'inherit',fontSize:12}}>Cancel</button>
+          {!preview.length&&<button onClick={parseText} disabled={!raw.trim()} style={{padding:'8px 18px',borderRadius:8,border:'none',background:raw.trim()?LIME:'#2a2a2a',color:raw.trim()?'#000':MUTED,fontWeight:700,cursor:raw.trim()?'pointer':'default',fontFamily:'inherit',fontSize:12}}>Parse</button>}
+          {preview.length>0&&<button onClick={doImport} disabled={importing} style={{padding:'8px 18px',borderRadius:8,border:'none',background:LIME,color:'#000',fontWeight:700,cursor:'pointer',fontFamily:'inherit',fontSize:12}}>{importing?'Importing…':`Import ${preview.length}`}</button>}
+        </div>
+      </>)}
+
+      {mode==='cin'&&(<>
+        <div style={{fontSize:11,color:MUTED,marginBottom:10}}>Export your CIN database as JSON and paste it here, or upload the file. Supports tasks arrays and board exports.</div>
+        <input ref={fileRef} type="file" accept=".json" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>parseCIN(ev.target.result);r.readAsText(f);}}/>
+        <div style={{display:'flex',gap:8,marginBottom:8}}>
+          <button onClick={()=>fileRef.current?.click()} style={{flex:1,padding:'10px',borderRadius:8,border:`1px dashed ${BORDER}`,background:'#0a0a0a',color:MUTED,cursor:'pointer',fontFamily:'inherit',fontSize:13}}>📂 Upload JSON File</button>
+        </div>
+        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={4} placeholder='Or paste JSON here…' style={{...bInp,resize:'vertical',lineHeight:1.5,fontFamily:'monospace',fontSize:11}}/>
+        {raw.trim()&&!cinJson&&<button onClick={()=>parseCIN(raw)} style={{width:'100%',padding:'9px',borderRadius:8,border:'none',background:BLUE,color:'#000',fontWeight:700,cursor:'pointer',fontFamily:'inherit',fontSize:13,marginBottom:8}}>Parse JSON</button>}
+        {cinError&&<div style={{color:'#FF453A',fontSize:12,marginBottom:8,padding:'8px 10px',background:'#180808',borderRadius:7,border:'1px solid #FF453A44'}}>{cinError}</div>}
+
+        {cinStats&&!preview.length&&(<>
+          <div style={{background:'#0a0a0a',borderRadius:10,border:`1px solid ${BORDER}`,padding:'12px 14px',marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:LIME,marginBottom:8}}>✓ Parsed {cinStats.total} tasks</div>
+            {cinStats.buckets.length>0&&(<div style={{marginBottom:10}}>
+              <div style={{fontSize:10,fontWeight:700,color:MUTED,letterSpacing:1,textTransform:'uppercase',marginBottom:6}}>Map Buckets → Your Buckets</div>
+              {cinStats.buckets.map(name=>(<div key={name} style={{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
+                <span style={{fontSize:12,color:TEXT,flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📁 {name}</span>
+                <span style={{color:MUTED,fontSize:12}}>→</span>
+                <select value={cinBucketMap[name]||''} onChange={e=>setCinBucketMap(m=>({...m,[name]:e.target.value}))} style={{...bSel,marginBottom:0,flex:1,fontSize:11}}>
+                  <option value="">(no bucket)</option>
+                  {buckets.map(b=><option key={b.id} value={b.id}>{b.emoji} {b.label}</option>)}
+                </select>
+              </div>))}
+            </div>)}
+            {cinStats.statuses.length>0&&(<div>
+              <div style={{fontSize:10,fontWeight:700,color:MUTED,letterSpacing:1,textTransform:'uppercase',marginBottom:6}}>Map Statuses</div>
+              {cinStats.statuses.map(s=>(<div key={s} style={{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
+                <span style={{fontSize:12,color:TEXT,flex:1}}>{s}</span>
+                <span style={{color:MUTED,fontSize:12}}>→</span>
+                <select value={cinStatusMap[s]||'list'} onChange={e=>setCinStatusMap(m=>({...m,[s]:e.target.value}))} style={{...bSel,marginBottom:0,flex:1,fontSize:11}}>
+                  {[['inprogress','In Progress'],['nextup','Next Up'],['do','To Do'],['list','List']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>))}
+            </div>)}
+          </div>
+          <button onClick={buildCINPreview} style={{width:'100%',padding:'10px',borderRadius:8,border:'none',background:LIME,color:'#000',fontWeight:700,cursor:'pointer',fontFamily:'inherit',fontSize:13,marginBottom:8}}>Preview Import →</button>
+        </>)}
+
+        {preview.length>0&&(<>
+          <div style={{background:'#0a0a0a',borderRadius:8,padding:'10px 12px',border:`1px solid ${BORDER}`,marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:700,color:LIME,marginBottom:8}}>{preview.length} TASKS READY</div>
+            {preview.slice(0,5).map((t,i)=><div key={i} style={{fontSize:12,padding:'3px 0',borderBottom:'1px solid #141414',display:'flex',alignItems:'center',gap:8}}>
+              <span style={{color:TEXT,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.title}</span>
+              {t.bucketId&&<span style={{fontSize:10,color:MUTED,flexShrink:0}}>{buckets.find(b=>b.id===t.bucketId)?.label}</span>}
+              {t.dueDate&&<span style={{fontSize:10,color:ORANGE,flexShrink:0}}>{t.dueDate}</span>}
+            </div>)}
+            {preview.length>5&&<div style={{fontSize:11,color:MUTED,marginTop:4}}>…and {preview.length-5} more</div>}
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>{setPreview([]);setCinJson(null);setCinStats(null);setRaw('');}} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${BORDER}`,background:'#1c1c1e',cursor:'pointer',color:MUTED,fontFamily:'inherit',fontSize:12}}>← Back</button>
+            <button onClick={doImport} disabled={importing} style={{flex:1,padding:'8px',borderRadius:8,border:'none',background:LIME,color:'#000',fontWeight:700,cursor:'pointer',fontFamily:'inherit',fontSize:13}}>{importing?'Importing…':`✓ Import ${preview.length} Tasks`}</button>
+          </div>
+        </>)}
+        {!cinStats&&!cinError&&<div style={{display:'flex',justifyContent:'flex-end',marginTop:4}}><button onClick={onClose} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${BORDER}`,background:'#1c1c1e',cursor:'pointer',color:MUTED,fontFamily:'inherit',fontSize:12}}>Cancel</button></div>}
+      </>)}
     </div>
   </DCModal>);
 }
@@ -3138,6 +3396,61 @@ function TasksSection({user}){
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// SIDEBAR DRAWER
+// ═══════════════════════════════════════════════════════════════════
+function SidebarDrawer({open,onClose,tab,setTab,user,resetHour,onResetHourChange,onSignOut}){
+  const NAV_ITEMS=[
+    {key:'now',label:'NOW',icon:'☀',color:'#f7c94f'},
+    {key:'habits',label:'HABITS',icon:'✓',color:GREEN},
+    {key:'sprint',label:'SPRINT',icon:'⚡',color:LIME},
+    {key:'countdown',label:'COUNTDOWN',icon:'⏳',color:BLUE},
+    {key:'freq',label:'FREQ',icon:'🔁',color:ORANGE},
+    {key:'tasks',label:'TASKS',icon:'📋',color:LIME},
+    {key:'brands',label:'BRANDS',icon:'🏷',color:LIME},
+  ];
+  return(<>
+    {open&&<div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:800,backdropFilter:'blur(2px)'}}/>}
+    <div style={{position:'fixed',top:0,left:0,bottom:0,width:260,background:'#0a0a0a',borderRight:`1px solid ${BORDER}`,zIndex:900,display:'flex',flexDirection:'column',transform:open?'translateX(0)':'translateX(-100%)',transition:'transform .25s cubic-bezier(.4,0,.2,1)',boxShadow:open?'8px 0 40px rgba(0,0,0,.8)':'none'}}>
+      {/* Header */}
+      <div style={{padding:'20px 20px 16px',borderBottom:`1px solid ${BORDER}`,display:'flex',alignItems:'center',gap:12}}>
+        <div style={{fontSize:28,lineHeight:1}}>☀</div>
+        <div><div style={{fontWeight:900,fontSize:16,letterSpacing:-0.5,color:LIME}}>DAYMAN 2.5</div><div style={{fontSize:11,color:MUTED,marginTop:1}}>{user?.email}</div></div>
+        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:MUTED,fontSize:22,cursor:'pointer',lineHeight:1}}>✕</button>
+      </div>
+      {/* Nav items */}
+      <div style={{flex:1,overflowY:'auto',padding:'12px 0'}}>
+        <div style={{padding:'0 12px 8px',fontSize:9,fontWeight:700,letterSpacing:2,color:'#444',textTransform:'uppercase'}}>Views</div>
+        {NAV_ITEMS.map(t=>(<button key={t.key} onClick={()=>{setTab(t.key);onClose();}} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'11px 16px',background:tab===t.key?t.color+'18':'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',borderLeft:tab===t.key?`3px solid ${t.color}`:'3px solid transparent',transition:'all .15s'}}>
+          <span style={{fontSize:20,width:26,textAlign:'center',flexShrink:0}}>{t.icon}</span>
+          <span style={{fontSize:13,fontWeight:tab===t.key?700:500,color:tab===t.key?t.color:TEXT,letterSpacing:0.3}}>{t.label}</span>
+          {tab===t.key&&<div style={{marginLeft:'auto',width:6,height:6,borderRadius:'50%',background:t.color,flexShrink:0}}/>}
+        </button>))}
+
+        {/* Settings section */}
+        <div style={{margin:'16px 12px 8px',height:1,background:BORDER}}/>
+        <div style={{padding:'0 12px 8px',fontSize:9,fontWeight:700,letterSpacing:2,color:'#444',textTransform:'uppercase'}}>Settings</div>
+        <div style={{padding:'12px 16px'}}>
+          <div style={{fontSize:10,color:MUTED,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Day Reset Hour</div>
+          <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+            {Array.from({length:13},(_,i)=>i).map(h=>(<button key={h} onClick={()=>onResetHourChange(h)} style={{padding:'5px 9px',borderRadius:6,border:`1px solid ${resetHour===h?LIME:BORDER}`,background:resetHour===h?'#0a140a':'transparent',color:resetHour===h?LIME:MUTED,fontSize:11,cursor:'pointer',fontFamily:'inherit',fontWeight:resetHour===h?700:400}}>{h===0?'12am':`${h}${h<12?'am':'pm'}`}</button>))}
+          </div>
+          <div style={{fontSize:11,color:'#444',marginTop:8,lineHeight:1.4}}>When the next day starts for habits & sprints.</div>
+        </div>
+        <div style={{padding:'0 12px 8px'}}>
+          <div style={{background:'#111',borderRadius:10,border:`1px solid ${BORDER}`,padding:'12px 14px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:MUTED,fontSize:12}}>Version</span><span style={{fontSize:12,fontWeight:700,color:LIME}}>DAYMAN 2.5</span></div>
+            <div style={{display:'flex',justifyContent:'space-between'}}><span style={{color:MUTED,fontSize:12}}>Database</span><span style={{fontSize:12,color:TEXT}}>MR Supabase</span></div>
+          </div>
+        </div>
+        <div style={{padding:'8px 12px'}}>
+          <button onClick={onSignOut} style={{width:'100%',padding:'11px',borderRadius:10,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.05)',color:'#ef4444',fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Sign Out</button>
+        </div>
+      </div>
+    </div>
+  </>);
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // BOTTOM NAV
 // ═══════════════════════════════════════════════════════════════════
 const TABS=[
@@ -3148,15 +3461,19 @@ const TABS=[
   {key:'freq',label:'FREQ',icon:'🔁',color:ORANGE},
   {key:'tasks',label:'TASKS',icon:'📋',color:LIME},
   {key:'brands',label:'BRANDS',icon:'🏷',color:LIME},
-  {key:'sidebar',label:'⚙️',icon:'⚙️',color:MUTED},
 ];
-function BottomNav({tab,setTab}){
+function BottomNav({tab,setTab,onMenuOpen}){
   return(<div style={{flexShrink:0,display:'flex',borderTop:`1px solid ${BORDER}`,background:'#000',height:NAV_H}}>
     {TABS.map(t=>(<button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,padding:'6px 0',fontFamily:'inherit',transition:'opacity .1s',opacity:tab===t.key?1:0.4}}>
       <span style={{fontSize:18,lineHeight:1}}>{t.icon}</span>
       <span style={{fontSize:9,fontWeight:700,letterSpacing:'0.08em',color:tab===t.key?t.color:MUTED}}>{t.label}</span>
       {tab===t.key&&<div style={{width:20,height:2,borderRadius:1,background:t.color,position:'absolute',bottom:4}}/>}
     </button>))}
+    {/* Hamburger menu */}
+    <button onClick={onMenuOpen} style={{width:52,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,padding:'6px 0',fontFamily:'inherit',opacity:0.55}}>
+      <span style={{fontSize:18,lineHeight:1}}>☰</span>
+      <span style={{fontSize:9,fontWeight:700,letterSpacing:'0.08em',color:MUTED}}>MENU</span>
+    </button>
   </div>);
 }
 
@@ -3167,6 +3484,7 @@ function App(){
   const [screen,setScreen]=useState('loading');
   const [user,setUser]=useState(null);
   const [tab,setTab]=useState('habits');
+  const [sidebarOpen,setSidebarOpen]=useState(false);
   const switchTab=t=>{setTab(t);if(t==='now')setNowKey(k=>k+1);};
   const [resetHour,setResetHour]=useState(()=>getResetHour());
   const [nowKey,setNowKey]=useState(0);
@@ -3182,6 +3500,7 @@ function App(){
   if(screen==='auth')return<AuthScreen onAuth={u=>{setUser(u);setScreen('main');}}/>;
 
   return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
+    <SidebarDrawer open={sidebarOpen} onClose={()=>setSidebarOpen(false)} tab={tab} setTab={switchTab} user={user} resetHour={resetHour} onResetHourChange={updateResetHour} onSignOut={()=>db.auth.signOut()}/>
     <div style={{flex:1,overflow:'hidden',position:'relative'}}>
       <div style={{display:tab==='now'?'block':'none',height:'100%'}}>{user&&<NowSection key={nowKey} user={user} resetHour={resetHour} onNavigate={switchTab}/>}</div>
       <div style={{display:tab==='sprint'?'block':'none',height:'100%'}}>{user&&<SprintSection user={user} resetHour={resetHour}/>}</div>
@@ -3190,9 +3509,8 @@ function App(){
       <div style={{display:tab==='freq'?'block':'none',height:'100%'}}>{user&&<FreqSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='tasks'?'block':'none',height:'100%'}}>{user&&<TasksSection user={user}/>}</div>
       <div style={{display:tab==='brands'?'block':'none',height:'100%'}}>{user&&<BrandsSection user={user}/>}</div>
-      <div style={{display:tab==='sidebar'?'block':'none',height:'100%'}}>{user&&<SidebarSection user={user} resetHour={resetHour} onResetHourChange={updateResetHour} onSignOut={()=>db.auth.signOut()}/>}</div>
     </div>
-    <BottomNav tab={tab} setTab={switchTab}/>
+    <BottomNav tab={tab} setTab={switchTab} onMenuOpen={()=>setSidebarOpen(true)}/>
   </div>);
 }
 

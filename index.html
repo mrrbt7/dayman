@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#000000"/>
-<title>DAYMAN 2.8</title>
+<title>DAYMAN 2.9</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -123,7 +123,7 @@ const showNotif=(task,num,total)=>{try{if('Notification' in window&&Notification
 // ── FREQ helpers ─────────────────────────────────────────────────
 const WDN=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 const todayStr=()=>localDateStr();
-const freqDays=f=>{if(!f)return null;const s=f.trim().toLowerCase();if(WDN.includes(s)||['weekday','weekdays'].includes(s))return 5;if(['weekend','weekends'].includes(s))return 2;if(['weekly'].includes(s))return 7;if(s==='daily')return 1;if(s==='monthly')return 30;if(s==='yearly')return 365;const n=parseInt(s);return(!isNaN(n)&&n>0)?n:null;};
+const freqDays=f=>{if(!f)return null;const s=f.trim().toLowerCase();if(WDN.includes(s)||s==='weekly')return 7;if(s==='weekday'||s==='weekdays')return 5;if(s==='weekend'||s==='weekends')return 2;if(s==='daily')return 1;if(s==='monthly')return 30;if(s==='yearly')return 365;const n=parseInt(s);return(!isNaN(n)&&n>0)?n:null;};
 const daysSinceDone=cl=>{if(!cl||!cl.length)return null;const last=[...cl].sort((a,b)=>b.doneAt.localeCompare(a.doneAt))[0];if(!last||!last.doneAt)return null;return Math.round((new Date()-new Date(last.doneAt))/(1000*60*60*24));};
 const lastDoneStr=cl=>{if(!cl||!cl.length)return null;return[...cl].sort((a,b)=>b.doneAt.localeCompare(a.doneAt))[0]?.doneAt?.split('T')[0]||null;};
 const nextDue=frequency=>{const fd=freqDays(frequency);if(!fd)return todayStr();const d=new Date(todayStr()+'T00:00:00');d.setDate(d.getDate()+fd);return d.toISOString().split('T')[0];};
@@ -2492,7 +2492,7 @@ function NowSection({user,resetHour=RESET_HOUR,onNavigate,menuBtn}){
               </div>
               {/* Name + subtitle */}
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:TASK_FS,fontWeight:600,color:isDone?GREEN:TEXT,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textDecoration:isDone?'line-through':'none'}}>{item.label}</div>
+                <div style={{fontSize:TASK_FS,fontWeight:600,color:isDone?GREEN:TEXT,lineHeight:1.3,textDecoration:isDone?'line-through':'none',wordBreak:'break-word'}}>{item.label}</div>
                 {!isDone&&item.subtitle&&<div style={{fontSize:10,color:item.color,marginTop:1,fontWeight:600}}>{item.subtitle}</div>}
                 {isDone&&<div style={{fontSize:10,color:GREEN,marginTop:1,fontWeight:700}}>Done!</div>}
               </div>
@@ -3456,6 +3456,46 @@ function DCBoardsScreen({user,onSelect}){
 }
 
 // ─── TASKS SECTION (MainApp equivalent) ─────────────────────────────
+// ─── DUE VIEW ────────────────────────────────────────────────────────
+function DueView({tasks,buckets,onEdit,onCheck,celebratingIds}){
+  const today=localDateStr();
+  const overdue=[...tasks.filter(t=>!t.isRef&&t.dueDate&&daysDiff(t.dueDate)<0&&!(t.done&&!celebratingIds.has(t.id)))].sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+  const dueToday=[...tasks.filter(t=>!t.isRef&&t.dueDate&&daysDiff(t.dueDate)===0&&!(t.done&&!celebratingIds.has(t.id)))].sort((a,b)=>(t2m_dc(a.time)-t2m_dc(b.time)));
+  const SecHead=({color,label,count})=>(<div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px 6px"}}><div style={{width:6,height:6,borderRadius:"50%",background:color,flexShrink:0}}/><span style={{fontSize:11,fontWeight:700,color,letterSpacing:.5}}>{label}</span><div style={{flex:1,height:1,background:color+"33",margin:"0 8px"}}/><span style={{fontSize:10,color}}>{count}</span></div>);
+  const Row=({t,color})=>{
+    const bkt=buckets.find(b=>b.id===t.bucketId);
+    const isCelebrating=celebratingIds.has(t.id);
+    const isDone=t.done||isCelebrating;
+    const d=t.dueDate?daysDiff(t.dueDate):null;
+    const overDays=(d!==null&&d<0)?Math.abs(d):0;
+    return(<div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",borderRadius:12,border:`1px solid ${isCelebrating?"#30D158":color==="#FF453A"?"#FF453A44":BORDER}`,background:isCelebrating?"#0a140a":color==="#FF453A"?"#130505":"#1c1c1e",marginBottom:6,marginLeft:16,marginRight:16,opacity:isDone?.6:1,transition:"all .3s"}}>
+      {t.time?<div style={{fontSize:13,fontWeight:800,color:isDone?"#30D158":color,flexShrink:0,minWidth:50,textAlign:"center"}}>{fmtTime12(t.time)}</div>:<div style={{fontSize:11,color:MUTED,flexShrink:0,minWidth:50,textAlign:"center"}}>{overDays>0?<span style={{color:"#FF453A",fontWeight:700}}>-{overDays}d</span>:"today"}</div>}
+      <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onEdit(t)}>
+        <div style={{fontSize:14,fontWeight:600,color:isDone?"#30D158":TEXT,textDecoration:isDone?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title||"Untitled"}</div>
+        {(bkt||isCelebrating)&&<div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+          {bkt&&<span style={{fontSize:10,color:bkt.mainColor||MUTED}}>{bkt.emoji} {bkt.label}</span>}
+          {overDays>0&&!isCelebrating&&<span style={{fontSize:10,fontWeight:700,color:"#FF453A",background:"#FF453A18",borderRadius:4,padding:"1px 5px"}}>⚠ {overDays}d overdue</span>}
+          {isCelebrating&&<span style={{fontSize:11,color:"#30D158",fontWeight:700}}>✓ Done!</span>}
+        </div>}
+      </div>
+      <button onClick={e=>{e.stopPropagation();onCheck(t.id);}} disabled={isCelebrating} style={{padding:"9px 16px",borderRadius:9,border:"none",background:LIME,color:"#000",fontSize:12,fontWeight:800,cursor:isCelebrating?"default":"pointer",fontFamily:"inherit",flexShrink:0,opacity:isCelebrating?.5:1}}>Done</button>
+    </div>);
+  };
+  return(<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
+    <div style={{padding:"8px 16px",borderBottom:`1px solid ${BORDER}`,flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:12,fontWeight:700,color:"#FF453A"}}>🔴 {overdue.length} overdue</span>
+      <span style={{color:BORDER}}>·</span>
+      <span style={{fontSize:12,fontWeight:700,color:LIME}}>◉ {dueToday.length} today</span>
+    </div>
+    <div style={{flex:1,overflowY:"auto",paddingBottom:20,paddingTop:8}}>
+      {overdue.length===0&&dueToday.length===0&&(<div style={{textAlign:"center",padding:"64px 20px",color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>✓</div><div style={{fontSize:16,fontWeight:700,color:TEXT,marginBottom:6}}>All clear</div><div style={{fontSize:13}}>Nothing overdue or due today</div></div>)}
+      {overdue.length>0&&<><SecHead color="#FF453A" label="OVERDUE" count={overdue.length}/>{overdue.map(t=><Row key={t.id} t={t} color="#FF453A"/>)}</>}
+      {dueToday.length>0&&<><SecHead color={LIME} label="DUE TODAY" count={dueToday.length}/>{dueToday.map(t=><Row key={t.id} t={t} color={LIME}/>)}</>}
+    </div>
+  </div>);
+}
+
+
 function TasksSection({user}){
   const [board,setBoard]=useState(()=>{const def=getDefaultId(user.id);return def?{id:def,_loading:true}:null;});
   const [allBoards,setAllBoards]=useState([]);
@@ -3467,9 +3507,12 @@ function TasksSection({user}){
 
   const loadBoard=useCallback(async(b)=>{
     setLoading(true);setTasks([]);setBuckets([]);
+    // Load ALL boards for this user so PLAN shows everything
+    const{data:memAll}=await db.from("board_members").select("board_id").eq("user_id",user.id);
+    const allBoardIds=(memAll||[]).map(m=>m.board_id).filter(Boolean);
     const[tr,br,sr]=await Promise.all([
-      db.from("tasks").select("*").eq("board_id",b.id).eq("done",false),
-      db.from("buckets").select("*").eq("board_id",b.id).order("sort_order"),
+      db.from("tasks").select("*").in("board_id",allBoardIds.length?allBoardIds:[b.id]).eq("done",false),
+      db.from("buckets").select("*").in("board_id",allBoardIds.length?allBoardIds:[b.id]).order("sort_order"),
       db.from("board_settings").select("*").eq("board_id",b.id).single(),
     ]);
     setTasks((tr.data||[]).map(dbToTask));
@@ -3491,7 +3534,6 @@ function TasksSection({user}){
     db.from("board_members").select("role,boards(*)").eq("user_id",user.id).then(({data})=>{
       const bds=(data||[]).map(m=>({...m.boards,role:m.role}));
       setAllBoards(bds);
-      // Auto-select first board if none set
       if(!board&&bds.length>0)setBoard(bds[0]);
     });
   },[]);
@@ -3537,7 +3579,7 @@ function TasksSection({user}){
   };
   const saveSettingsJson=(key,value)=>{saveSettings({[key]:JSON.stringify(value)});};
 
-  const VIEWS=[["cinplan","▣ Plan"],["cinlist","≡ List"],["timeline","⏱ Timeline"],["board","⊞ Board"],["search","🔍 Search"]];
+  const VIEWS=[["cinplan","▣ Plan"],["due","🔴 Due"],["cinlist","≡ List"],["timeline","⏱ Timeline"],["board","⊞ Board"],["search","🔍 Search"]];
 
   if(!board&&!allBoards.length)return(<ThemeCtx.Provider value={DARK_THEME}><div style={{height:"100%",display:"flex",flexDirection:"column",background:"#000",overflow:"hidden"}}>
     <div style={{height:38,borderBottom:`1px solid ${BORDER}`}}/>
@@ -3571,6 +3613,7 @@ function TasksSection({user}){
       {/* Body */}
       {loading&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner size={24} color={LIME}/></div>}
       {!loading&&(<div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+        {viewMode==="due"&&<DueView tasks={tasks} buckets={buckets} onEdit={setEditing} onCheck={checkTask} celebratingIds={celebratingIds}/>}
         {viewMode==="cinplan"&&<CINPlanView tasks={tasks} buckets={buckets} onEdit={setEditing} onCheck={checkTask} onSnooze={snoozeTask} celebratingIds={celebratingIds} readOnly={false}/>}
         {viewMode==="cinlist"&&<CINListView tasks={tasks} buckets={buckets} onEdit={setEditing} onCheck={checkTask} celebratingIds={celebratingIds} readOnly={false}/>}
         {viewMode==="timeline"&&<CINTimelineView tasks={tasks} buckets={buckets} onEdit={setEditing} onCheck={checkTask} celebratingIds={celebratingIds} readOnly={false}/>}

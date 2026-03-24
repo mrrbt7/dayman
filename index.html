@@ -1077,6 +1077,92 @@ function BucketManager({user,buckets,onClose,onReload}){
   </div>);
 }
 
+// ─── HABIT TIME VIEW ─────────────────────────────────────────────
+function HabitTimeView({user,resetHour=RESET_HOUR,timeOfDay,color}){
+  const [habits,setHabits]=useState([]);const [buckets,setBuckets]=useState([]);const [logs,setLogs]=useState({});const [loading,setLoading]=useState(true);
+  const today=useMemo(()=>{const now=new Date();if(now.getHours()<resetHour){const y=new Date(now);y.setDate(y.getDate()-1);return localDateStr(y);}return localDateStr(now);},[resetHour]);
+  const dates=useMemo(()=>getLast3Dates(),[]);
+  const load=useCallback(async()=>{
+    const[{data:h},{data:l},{data:bk}]=await Promise.all([
+      db.from('habits').select('*').eq('user_id',user.id).order('sort_order',{ascending:true}),
+      db.from('habit_logs').select('*').eq('user_id',user.id).lte('log_date',today),
+      db.from('habit_buckets').select('*').eq('user_id',user.id),
+    ]);
+    const map={};(l||[]).forEach(r=>{map[r.habit_id+'_'+r.log_date]=r.value;});
+    // Filter by time of day
+    const tod=timeOfDay;
+    const filtered=(h||[]).filter(hb=>{
+      if(!hb.habit_frequency||hb.habit_frequency==='daily'){
+        const t=hb.scheduled_time;
+        if(tod==='morning')return t&&t<'12:00';
+        if(tod==='afternoon')return !t||(t>='12:00'&&t<'17:00');// all-day goes to afternoon
+        if(tod==='night')return t&&t>='17:00'&&t<'22:00';
+        if(tod==='4thmeal')return t&&t>='22:00';
+      }
+      return false;
+    });
+    setHabits(filtered);setBuckets(bk||[]);setLogs(map);setLoading(false);
+  },[user.id,today,timeOfDay]);
+  useEffect(()=>{load();},[load]);
+
+  const isDone=h=>{const val=logs[h.id+'_'+today]??null;return h.type==='bool'?(val===1||val===-1):(val!==null&&val>0);};
+  const toggleCell=async(e,habit,date)=>{
+    e.stopPropagation();const key=habit.id+'_'+date;const cur=logs[key]??null;
+    let next=null;
+    if(habit.type==='bool'){if(cur===null)next=1;else if(cur===1)next=-1;else next=null;}
+    else{next=(cur||0)+1;if(next>9)next=null;}
+    setLogs(l=>{const nl={...l};if(next===null)delete nl[key];else nl[key]=next;return nl;});
+    if(next===null)await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);
+    else await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});
+  };
+  const renderCell=(habit,date)=>{
+    const val=logs[habit.id+'_'+date]??null;const isToday_=date===today;const col=habit.color||color;
+    if(habit.type==='bool'){
+      let icon='·',c='#2a2a2a',bg='transparent';
+      if(val===1){icon='✓';c=col;bg=col+'20';}else if(val===-1){icon='—';c='#555';}
+      return(<button key={date} onClick={e=>toggleCell(e,habit,date)} style={{width:34,height:40,background:bg,border:isToday_?'1px solid #333':'none',borderRadius:7,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:c,fontSize:val===1?15:13,fontWeight:700,flexShrink:0}}>{icon}</button>);
+    }
+    const numVal=val>0?val:null;
+    return(<button key={date} onClick={e=>toggleCell(e,habit,date)} style={{width:34,height:40,background:'transparent',border:isToday_?'1px solid #333':'none',borderRadius:7,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><span style={{color:numVal?col:'#2a2a2a',fontWeight:700,fontSize:13}}>{numVal||'·'}</span></button>);
+  };
+  const TOD_LABELS={morning:'🌅 Morning',afternoon:'☀ Afternoon',night:'🌙 Night','4thmeal':'🍕 4th Meal'};
+  return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
+    <div style={{flexShrink:0,padding:'12px 16px 8px',borderBottom:'1px solid #2a2a2a'}}>
+      <div style={{display:'flex',alignItems:'flex-end',gap:2}}>
+        <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
+        {dates.map(d=>(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
+          <div style={{fontSize:9,color:'#888',marginBottom:1}}>{dayLabel(d)}</div>
+          <div style={{fontSize:11,fontWeight:d===today?700:400,color:d===today?TEXT:'#666',background:d===today?'#1a1a1a':'none',borderRadius:5,width:28,height:24,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{dayNum(d)}</div>
+        </div>))}
+      </div>
+    </div>
+    <div style={{flex:1,overflowY:'auto',paddingBottom:60}}>
+      {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:40}}><Spinner size={22} color={color}/></div>}
+      {!loading&&habits.length===0&&<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:36,marginBottom:10}}>{TOD_LABELS[timeOfDay]}</div><div style={{fontSize:13}}>No habits scheduled for this time</div></div>}
+      {!loading&&habits.map(habit=>{
+        const done=isDone(habit);const bkt=buckets.find(b=>b.id===habit.bucket_id);const col=(bkt&&bkt.color)?bkt.color:(habit.color||color);
+        let streak=0;for(let i=0;i<365;i++){const d=new Date();d.setDate(d.getDate()-i);const ds=localDateStr(d);const val=logs[habit.id+'_'+ds]??null;const tracked=habit.type==='bool'?(val===1||val===-1):(val!==null&&val>0);if(tracked)streak++;else if(i===0)continue;else break;}
+        return(<div key={habit.id} style={{display:'flex',alignItems:'center',gap:2,padding:'0 16px',borderBottom:'1px solid #0d0d0d',minHeight:48}}>
+          <div style={{flex:1,minWidth:0,paddingTop:5,paddingBottom:5}}>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <div style={{width:7,height:7,borderRadius:'50%',background:col,flexShrink:0}}/>
+              <div style={{overflow:'hidden',flex:1}}>
+                <div style={{fontSize:TASK_FS,fontWeight:600,color:done?'#444':col,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',textDecoration:done?'line-through':'none'}}>{habit.name}</div>
+                {habit.scheduled_time&&<div style={{fontSize:10,color:ORANGE,fontWeight:600}}>{fmtTime12(habit.scheduled_time)}</div>}
+              </div>
+            </div>
+          </div>
+          <div style={{width:54,flexShrink:0,textAlign:'right',paddingRight:4}}>
+            {streak>0&&<div style={{fontSize:11,fontWeight:700,color:col,lineHeight:1.2,textAlign:'right'}}><div style={{fontSize:13}}>{streak}</div><div style={{fontSize:8,opacity:0.8}}>days</div></div>}
+          </div>
+          {dates.map(d=>renderCell(habit,d))}
+        </div>);
+      })}
+    </div>
+  </div>);
+}
+
+
 function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
   const [habits,setHabits]=useState([]);
   const [buckets,setBuckets]=useState([]);
@@ -1229,6 +1315,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
   const todayAbbr=getTodayAbbr();
   const dailyHabits=habits.filter(h=>!h.habit_frequency||h.habit_frequency==='daily');
   const weeklyHabits=habits.filter(h=>h.habit_frequency==='weekly');
+  const customHabits=habits.filter(h=>h.habit_frequency==='custom');
   // Weekly habits that were due this week but not done/skipped yet
   // Determine which weekdays have already passed this week (not including today — today's are shown separately)
   const todayWeekly=weeklyHabits.filter(h=>h.weekly_day===todayAbbr);
@@ -1307,10 +1394,9 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
     return(<div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px 0',marginBottom:0}}>
       <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
       {wkDates.map((d,i)=>{
-        const isThis=i===6;// most recent = this week
-        const wkNum=wkDates.length-i;
+        const isThis=i===2;// most recent = this week (3 items total, last is index 2)
         return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
-          <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{isThis?'NOW':`-${wkNum-1}wk`}</div>
+          <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{isThis?'NOW':`-${2-i}wk`}</div>
           <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#666',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
         </div>);
       })}
@@ -1331,8 +1417,8 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
         const col_=it_?GREEN:BLUE;
         return(<button key={k} className={`chrome-tab ${habTab===k?'active':'inactive'}`} onClick={()=>setHabTab(k)} style={{color:habTab===k?col_:'#666',flexShrink:0}}>{it_?'Today':(DAY_LABEL[k]||k)}{habTab===k&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:col_}}/>}</button>);
       })}
+      {customHabits.length>0&&<button className={`chrome-tab ${habTab==='upcoming'?'active':'inactive'}`} onClick={()=>setHabTab('upcoming')} style={{color:habTab==='upcoming'?'#c084fc':'#666',flexShrink:0}}>Upcoming{habTab==='upcoming'&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:'#c084fc'}}/>}</button>}
       <div style={{flex:1}}/>
-      {habTab==='today'&&totalToday>0&&<button className="chrome-tab" onClick={()=>setHideCompleted(v=>!v)} style={{color:hideCompleted?GREEN:'#666',fontSize:11,flexShrink:0}}>{hideCompleted?`▶ ${completedToday} done`:`Hide ${completedToday} ✓`}{false&&<span/>}</button>}
     </div>
     <div className="pill-tabs">
       {[['all','All'],['bool','✓'],['count','#']].map(([k,l])=>(
@@ -1372,6 +1458,31 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
           })}
         </>);
       })()}
+      {/* UPCOMING TAB - every N days habits */}
+      {!loading&&habTab==='upcoming'&&(<>
+        {customHabits.length===0&&<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:32,marginBottom:10}}>🔁</div><div style={{fontSize:13}}>No recurring habits yet. Add one with "Every N Days" frequency.</div></div>}
+        {customHabits.map(habit=>{
+          const habitLogs_=Object.entries(logs).filter(([k])=>k.startsWith(habit.id+'_')&&logs[k]>0).sort((a,b)=>b[0].localeCompare(a[0]));
+          const lastDone=habitLogs_.length?habitLogs_[0][0].slice(habit.id.length+1):null;
+          const sd=lastDone?Math.round((new Date()-new Date(lastDone+'T00:00:00'))/86400000):null;
+          const fd=habit.custom_days||2;
+          const daysLeft=sd!==null?fd-sd:null;
+          const isDue=daysLeft===null||daysLeft<=0;
+          const col=isDue?RED:(daysLeft<=2?ORANGE:MUTED);
+          const lbl=daysLeft===null?'Never done':daysLeft<=0?`${Math.abs(daysLeft)}d overdue`:daysLeft===0?'Due today':`${daysLeft}d left`;
+          return(<div key={habit.id} style={{background:isDue?'#180808':'#141414',border:`1px solid ${isDue?RED+'33':BORDER}`,borderRadius:16,padding:'14px 16px',marginBottom:8,display:'flex',alignItems:'center',gap:14,cursor:'pointer'}} onClick={()=>setDetailHabit(habit)}>
+            <div style={{width:40,height:40,borderRadius:11,background:(habit.color||BLUE)+'22',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>{habit.emoji||'🔁'}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:15,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{habit.name}</div>
+              <div style={{fontSize:11,color:MUTED,marginTop:2}}>Every {fd} days{sd!==null?` · last done ${sd}d ago`:' · never done'}</div>
+            </div>
+            <div style={{flexShrink:0,textAlign:'right'}}>
+              <div style={{fontSize:26,fontWeight:800,color:col,lineHeight:1}}>{daysLeft===null?'—':Math.abs(daysLeft)}</div>
+              <div style={{fontSize:9,color:MUTED,textTransform:'uppercase',letterSpacing:.5}}>{isDue?'overdue':'days left'}</div>
+            </div>
+          </div>);
+        })}
+      </>)}
       {/* TODAY TAB */}
       {!loading&&habTab==='today'&&(<>
         {/* Overdue weekly habits (from earlier this week, not done) */}
@@ -1412,9 +1523,9 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
           <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px',marginBottom:2}}>
             <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
             {getLastNOccurrences(DAY_IDX[todayAbbr]??0,3).map((d,i)=>{
-              const isThis=i===6;
+              const isThis=i===2;
               return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
-                <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{isThis?'NOW':`-${6-i}wk`}</div>
+                <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{isThis?'NOW':`-${2-i}wk`}</div>
                 <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#666',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
               </div>);
             })}
@@ -1443,7 +1554,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
             </div>);
           })}
         </>)}
-        {hideCompleted&&completedToday>0&&<div style={{textAlign:'center',padding:'12px',fontSize:12,color:'#444'}}>{completedToday} hidden · <button onClick={()=>setHideCompleted(false)} style={{background:'none',border:'none',color:GREEN,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Show all</button></div>}
+        {habTab==='today'&&<div style={{padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'center'}}><button onClick={()=>setHideCompleted(v=>!v)} style={{background:'none',border:`1px solid ${hideCompleted?GREEN:BORDER}`,borderRadius:8,padding:'7px 16px',color:hideCompleted?GREEN:MUTED,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>{hideCompleted?`▶ ${completedToday} done — show all`:`Hide ${completedToday} completed`}</button></div>}
       </>)}
     </div>
 
@@ -3692,6 +3803,10 @@ function SidebarDrawer({open,onClose,tab,setTab,user,onSignOut,lightMode,onToggl
   const NAV_ITEMS=[
     {key:'now',label:'NOW',icon:'☀',color:'#f7c94f'},
     {key:'habits',label:'HABITS',icon:'✓',color:GREEN},
+    {key:'morning',label:'MORNING',icon:'🌅',color:'#f97316'},
+    {key:'afternoon',label:'AFTERNOON',icon:'☀',color:'#eab308'},
+    {key:'night',label:'NIGHT',icon:'🌙',color:'#8b5cf6'},
+    {key:'4thmeal',label:'4TH MEAL',icon:'🍕',color:'#ec4899'},
     {key:'sprint',label:'SPRINT',icon:'⚡',color:LIME},
     {key:'countdown',label:'COUNTDOWN',icon:'⏳',color:BLUE},
   ];
@@ -3944,6 +4059,10 @@ function App(){
       <div style={{display:tab==='now'?'block':'none',height:'100%'}}>{user&&<NowSection key={nowKey} user={user} resetHour={resetHour} onNavigate={switchTab}/>}</div>
       <div style={{display:tab==='sprint'?'block':'none',height:'100%'}}>{user&&<SprintSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='habits'?'block':'none',height:'100%'}}>{user&&<HabitsSection user={user} resetHour={resetHour}/>}</div>
+      <div style={{display:tab==='morning'?'block':'none',height:'100%'}}>{user&&<HabitTimeView user={user} resetHour={resetHour} timeOfDay="morning" color="#f97316"/>}</div>
+      <div style={{display:tab==='afternoon'?'block':'none',height:'100%'}}>{user&&<HabitTimeView user={user} resetHour={resetHour} timeOfDay="afternoon" color="#eab308"/>}</div>
+      <div style={{display:tab==='night'?'block':'none',height:'100%'}}>{user&&<HabitTimeView user={user} resetHour={resetHour} timeOfDay="night" color="#8b5cf6"/>}</div>
+      <div style={{display:tab==='4thmeal'?'block':'none',height:'100%'}}>{user&&<HabitTimeView user={user} resetHour={resetHour} timeOfDay="4thmeal" color="#ec4899"/>}</div>
       <div style={{display:tab==='countdown'?'block':'none',height:'100%'}}>{user&&<CountdownSection user={user} resetHour={resetHour}/>}</div>
     </div>
     <BottomNav tab={tab} setTab={switchTab}/>

@@ -42,15 +42,6 @@ input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 .chrome-tab.active{color:#e8e8e8}
 .chrome-tab.inactive{color:#666}
 .chrome-tab.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
-
-/* Light Mode */
-body.light-mode{background:#f0f0f0;}
-.light-mode .lm-bg{background:#f5f5f5!important;}
-.light-mode .lm-card{background:#ffffff!important;border-color:#ddd!important;}
-.light-mode .lm-text{color:#111!important;}
-.light-mode .lm-muted{color:#777!important;}
-.light-mode .lm-border{border-color:#ddd!important;}
-.light-mode .lm-inp{background:#fff!important;color:#111!important;border-color:#ccc!important;}
 </style>
 </head>
 <body>
@@ -322,7 +313,7 @@ function SprintDetail({sprint,settings,isDone,onClose,onRun,onEdit,onDuplicate,o
       <span style={{fontSize:22,flexShrink:0}}>{sprint.emoji||'⚡'}</span>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontWeight:900,fontSize:15,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sprint.name}</div>
-        <div style={{fontSize:11,color:MUTED,marginTop:1}}>{skipped.size>0?<span>Excl. <span style={{color:ORANGE,fontWeight:700}}>{skipped.size}</span> · <span style={{color:LIME,fontWeight:700}}>{activeTasks.length}</span> active</span>:<span>{tasks.length} tasks · {fmtSecs(totalSecs(tasks))}</span>}</div>
+        <div style={{fontSize:11,color:MUTED,marginTop:1}}>{skipped.size>0?<span>Excl. <span style={{color:ORANGE,fontWeight:700}}>{skipped.size}</span> · <span style={{color:LIME,fontWeight:700}}>{activeTasks.length}</span> active</span>:<span>{tasks.length} tasks · <span style={{fontSize:15,fontWeight:800,color:LIME}}>{fmtSecs(totalSecs(tasks))}</span></span>}</div>
       </div>
       {sprint.scheduled_time&&<span style={{fontSize:16,color:ORANGE,fontWeight:900,flexShrink:0}}>{fmtTime12(sprint.scheduled_time)}</span>}
       {skipped.size>0&&<button onClick={resetAll} style={{padding:'5px 10px',borderRadius:7,border:`1px solid ${BORDER}`,background:'transparent',color:MUTED,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>↺</button>}
@@ -533,7 +524,7 @@ function SprintRunner({sprint,onClose,onLogRun,onComplete}){
       <div style={{fontSize:30,fontWeight:900,color:LIME,letterSpacing:-2}}>SPRINT COMPLETE</div>
       <div style={{fontSize:15,color:MUTED}}>{sprint.emoji||'⚡'} {sprint.name}</div>
       <div style={{display:'flex',gap:10,flexWrap:'wrap',justifyContent:'center',marginTop:4}}>
-        {[['TASKS',tasks.length,TEXT],['ELAPSED',fmtSecs(T.current.elapsed),LIME],['PLANNED',fmtSecs(totalSecs(tasks)),ORANGE]].map(([label,val,col])=>(<div key={label} style={{background:CARD,borderRadius:10,border:`1px solid ${BORDER}`,padding:'10px 16px'}}><div style={{fontSize:10,color:MUTED,letterSpacing:2,marginBottom:4}}>{label}</div><div style={{fontSize:20,fontWeight:900,color:col}}>{val}</div></div>))}
+        {[['TASKS',tasks.length,TEXT],['ELAPSED',fmtSecs(T.current.elapsed),LIME],['PLANNED',fmtSecs(totalSecs(tasks)),ORANGE]].map(([label,val,col])=>(<div key={label} style={{background:CARD,borderRadius:10,border:`1px solid ${BORDER}`,padding:'10px 16px'}}><div style={{fontSize:10,color:MUTED,letterSpacing:2,marginBottom:4}}>{label}</div><div style={{fontSize:label==='TASKS'?20:32,fontWeight:900,color:col}}>{val}</div></div>))}
       </div>
       <div style={{width:'100%',maxWidth:440,marginTop:8,textAlign:'left'}}>
         <div style={{fontSize:10,color:MUTED,letterSpacing:2,fontWeight:700,marginBottom:10}}>COMPLETED TASKS</div>
@@ -818,6 +809,7 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
   const [color,setColor]=useState(habit.color||HABIT_COLORS[0]);
   const [emoji_,setEmoji_]=useState(habit.emoji||'');
   const [saving,setSaving]=useState(false);
+  const [sprintId,setSprintId]=useState(habit.sprint_id||'');
   const [bucketId,setBucketId]=useState(habit.bucket_id||'');
   const [habitSubtitle,setHabitSubtitle]=useState(habit.subtitle||'');
   const [habitLink,setHabitLink]=useState(habit.link||'');
@@ -895,7 +887,7 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
   const cellBg=(date)=>{const val=logs[date]??null;const col=habit.color||BLUE;if(habit.type==='bool'){if(val===1)return col;if(val===-1)return'#333';}else{if(val>0)return col;}return'#1a1a1a';};
   const cellIcon=(date)=>{const val=logs[date]??null;if(habit.type==='bool'){if(val===1)return'✓';if(val===-1)return'—';}else{if(val>0)return val;}return null;};
 
-  const save=async()=>{if(!name.trim())return;setSaving(true);await onSave(habit.id,{name:name.trim(),subtitle:habitSubtitle||null,scheduled_time:time||null,color,emoji:emoji_||null,sprint_id:sprintId||null,bucket_id:bucketId||null,link:habitLink||null,notes:habitNotes||null});setSaving(false);};
+  const save=async()=>{if(!name.trim())return;setSaving(true);await onSave(habit.id,{name:name.trim(),subtitle:habitSubtitle||null,scheduled_time:time||null,color,emoji:emoji_||null,bucket_id:bucketId||null,link:habitLink||null,notes:habitNotes||null});setSaving(false);};
 
   return(<div style={{position:'fixed',inset:0,background:'#000',zIndex:500,display:'flex',flexDirection:'column',overflow:'hidden'}}>
     <div className="section-header">
@@ -994,7 +986,12 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
             {buckets.map(b=>(<option key={b.id} value={b.id}>{b.emoji} {b.name}</option>))}
           </select>
         </FormInput>)}
-
+        {sprints.length>0&&(<FormInput label="Link to Sprint (optional)">
+          <select value={sprintId} onChange={e=>setSprintId(e.target.value)} style={{...inp(),cursor:'pointer'}}>
+            <option value="">No sprint linked</option>
+            {sprints.map(s=>(<option key={s.id} value={s.id}>{s.emoji||'⚡'} {s.name}</option>))}
+          </select>
+        </FormInput>)}
         <FormInput label="Link (URL)"><input value={habitLink} onChange={e=>setHabitLink(e.target.value)} placeholder="https://…" style={inp()}/></FormInput>
         <FormInput label="Notes"><textarea value={habitNotes} onChange={e=>setHabitNotes(e.target.value)} rows={3} style={{...inp(),resize:'vertical'}}/></FormInput>
         <button onClick={save} disabled={saving} style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:saving?'#2a2a2a':habit.color||GREEN,color:'#000',fontWeight:900,fontSize:15,fontFamily:'inherit',cursor:saving?'default':'pointer',marginTop:4}}>{saving?'Saving…':'Save Changes'}</button>
@@ -1096,6 +1093,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
   const [newEmoji,setNewEmoji]=useState('');
   const [newSubtitle,setNewSubtitle]=useState('');
   const [newWeekDay,setNewWeekDay]=useState(()=>getTodayAbbr());
+  const [newCustomDays,setNewCustomDays]=useState('2');
   const [newSprintId,setNewSprintId]=useState('');
   const [newBucketId,setNewBucketId]=useState('');
   const [saving,setSaving]=useState(false);
@@ -1186,8 +1184,8 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
 
   const addHabit=async()=>{
     if(!newName.trim())return;setSaving(true);
-    await db.from('habits').insert({user_id:user.id,name:newName.trim(),color:newColor,type:newType,scheduled_time:newTime||null,sort_order:habits.length,streak_seed:0,habit_frequency:newHabitFreq,weekly_day:newHabitFreq==='weekly'?newWeekDay:null,bucket_id:newBucketId||null,emoji:newEmoji||null,subtitle:newSubtitle||null});
-    setNewName('');setNewType('bool');setNewColor(HABIT_COLORS[0]);setNewTime('');setNewHabitFreq('daily');setNewBucketId('');setNewEmoji('');setNewSubtitle('');setSaving(false);setShowAdd(false);load();
+    await db.from('habits').insert({user_id:user.id,name:newName.trim(),color:newColor,type:newType,scheduled_time:newTime||null,sort_order:habits.length,streak_seed:0,habit_frequency:newHabitFreq,weekly_day:newHabitFreq==='weekly'?newWeekDay:null,sprint_id:newSprintId||null,bucket_id:newBucketId||null,emoji:newEmoji||null,subtitle:newSubtitle||null});
+    setNewName('');setNewType('bool');setNewColor(HABIT_COLORS[0]);setNewTime('');setNewHabitFreq('daily');setNewSprintId('');setNewBucketId('');setNewEmoji('');setNewSubtitle('');setSaving(false);setShowAdd(false);load();
   };
   const deleteHabit=async id=>{if(!window.confirm('Delete habit and all its history?'))return;await db.from('habits').delete().eq('id',id);load();setEditHabit(null);};
   const updateHabit=async(id,patch)=>{await db.from('habits').update(patch).eq('id',id);load();setEditHabit(null);};
@@ -1257,7 +1255,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
     const streak=getStreak(habit);const done=isDoneToday(habit);
     const habitBkt=buckets.find(b=>b.id===habit.bucket_id);
     const col=(habitBkt&&habitBkt.color)?habitBkt.color:(habit.color||BLUE);
-
+    const linkedSprint=habit.sprint_id?sprints.find(s=>s.id===habit.sprint_id):null;
     return(<div style={{display:'flex',alignItems:'center',gap:2,padding:'0 16px',borderBottom:`1px solid #0d0d0d`,minHeight:48}}>
 
       {/* Name */}
@@ -1291,14 +1289,14 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
   // Build 7-week cells for weekly
   const weeklyCells=(habit)=>{
     const dayIdx=DAY_IDX[habit.weekly_day]??1;
-    const wkDates=getLastNOccurrences(dayIdx,3);
+    const wkDates=getLastNOccurrences(dayIdx,7);
     return wkDates.map(d=>renderWeeklyCell(habit,d));
   };
 
   // Week date headers for weekly habits
   const WeeklyDateHeader=({habit})=>{
     const dayIdx=DAY_IDX[habit.weekly_day]??1;
-    const wkDates=getLastNOccurrences(dayIdx,3);
+    const wkDates=getLastNOccurrences(dayIdx,7);
     return(<div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px 0',marginBottom:0}}>
       <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
       {wkDates.map((d,i)=>{
@@ -1320,24 +1318,14 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
       <button onClick={()=>setShowAdd(true)} style={{background:GREEN,border:'none',borderRadius:8,padding:'4px 12px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
     </div>
 
-    {/* Day-of-week tabs */}
-    <div className="chrome-tabs" style={{overflowX:'auto',flexWrap:'nowrap'}}>
-      {(['today',...DAY_ABBR]).map(k=>{
-        const isToday_=k==='today';
-        const label=isToday_?`Today`:(DAY_LABEL[k]||k);
-        const hasHabits=isToday_?true:weeklyHabits.some(h=>h.weekly_day===k);
-        if(!isToday_&&!hasHabits)return null;
-        const col=isToday_?GREEN:BLUE;
-        return(<button key={k} className={`chrome-tab ${habTab===k?'active':'inactive'}`} onClick={()=>setHabTab(k)} style={{color:habTab===k?col:'#666',flexShrink:0}}>
-          {label}{habTab===k&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:col}}/>}
-        </button>);
+    <div className="chrome-tabs" style={{overflowX:'auto'}}>
+      {['today',...DAY_ABBR].map(k=>{
+        const it_=k==='today';if(!it_&&!weeklyHabits.some(h=>h.weekly_day===k))return null;
+        const col_=it_?GREEN:BLUE;
+        return(<button key={k} className={`chrome-tab ${habTab===k?'active':'inactive'}`} onClick={()=>setHabTab(k)} style={{color:habTab===k?col_:'#666',flexShrink:0}}>{it_?'Today':(DAY_LABEL[k]||k)}{habTab===k&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:col_}}/>}</button>);
       })}
       <div style={{flex:1}}/>
-      {(habTab==='today'?totalToday:0)>0&&(
-        <button className="chrome-tab" onClick={()=>setHideCompleted(v=>!v)} style={{color:hideCompleted?GREEN:'#666',fontSize:11,flexShrink:0}}>
-          {hideCompleted?`▶ ${completedToday} done`:`Hide ${completedToday} ✓`}{false&&<span/>}
-        </button>
-      )}
+      {habTab==='today'&&totalToday>0&&<button className="chrome-tab" onClick={()=>setHideCompleted(v=>!v)} style={{color:hideCompleted?GREEN:'#666',fontSize:11,flexShrink:0}}>{hideCompleted?`▶ ${completedToday} done`:`Hide ${completedToday} ✓`}{false&&<span/>}</button>}
     </div>
     <div className="pill-tabs">
       {[['all','All'],['bool','✓'],['count','#']].map(([k,l])=>(
@@ -1352,27 +1340,21 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
     <div style={{flex:1,overflowY:'auto',paddingBottom:NAV_H+12}}>
       {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:40}}><Spinner size={22} color={GREEN}/></div>}
 
-      {/* DAY TAB — shows daily habits grouped by time of day */}
-      {/* When on a DOW tab, show that day's weekly habits */}
-      {!loading&&habTab!=='today'&&DAY_ABBR.includes(habTab)&&(<>
-        {(()=>{
-          const dayHabits=applyFilters(weeklyHabits.filter(h=>h.weekly_day===habTab));
-          const dayIdx2=DAY_IDX[habTab]??0;
-          const wkDts=getLastNOccurrences(dayIdx2,3);
-          if(dayHabits.length===0)return<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:32,marginBottom:10}}>📅</div><div style={{fontSize:13}}>No habits on {DAY_FULL_MAP[habTab]||habTab}</div></div>;
-          return(<>
-            <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'6px 16px 2px'}}>
-              <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
-              {wkDts.map((d,i)=>{const isThis=i===2;return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
-                <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{isThis?'NOW':`-${2-i}wk`}</div>
-                <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#666',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
-              </div>);})}
-            </div>
-            {dayHabits.map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={habit.weekly_day?weeklyCells(habit):dailyCells(habit)}/>)}
-          </>);
-        })()}
-      </>)}
-
+      {!loading&&DAY_ABBR.includes(habTab)&&(()=>{
+        const dh_=applyFilters(weeklyHabits.filter(h=>h.weekly_day===habTab));
+        const wd_=getLastNOccurrences(DAY_IDX[habTab]??0,3);
+        if(!dh_.length)return(<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:32,marginBottom:10}}>📅</div><div style={{fontSize:13}}>No habits on {DAY_FULL_MAP[habTab]||habTab}</div></div>);
+        return(<>
+          <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'6px 16px 2px'}}>
+            <div style={{flex:1}}/><div style={{width:54}}/>
+            {wd_.map((d,i)=>{const is_=i===2;return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
+              <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{is_?'NOW':`-${2-i}wk`}</div>
+              <div style={{fontSize:10,fontWeight:is_?700:400,color:is_?TEXT:'#666',background:is_?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
+            </div>);})}   
+          </div>
+          {dh_.map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={weeklyCells(habit)}/>)}
+        </>);
+      })()}
       {/* TODAY TAB */}
       {!loading&&habTab==='today'&&(<>
         {/* Overdue weekly habits (from earlier this week, not done) */}
@@ -1383,7 +1365,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
           </div>
           {overdueWeekly.map((habit,idx,arr)=>{
             const streak=getStreak(habit);const done=isDoneToday(habit);const col=habit.color||BLUE;
-        
+            const linkedSprint=habit.sprint_id?sprints.find(s=>s.id===habit.sprint_id):null;
             return(<div key={habit.id} style={{display:'flex',alignItems:'center',gap:2,padding:'0 16px',borderBottom:'1px solid #0d0d0d',minHeight:48,background:'#0d0000'}}>
               <div onClick={()=>setDetailHabit(habit)} style={{flex:1,minWidth:0,cursor:'pointer',paddingTop:5,paddingBottom:5}}>
                 <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -1412,10 +1394,10 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
           {/* Weekly date header for today's weekly */}
           <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px',marginBottom:2}}>
             <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
-            {getLastNOccurrences(DAY_IDX[todayAbbr]??0,3).map((d,i)=>{
+            {getLastNOccurrences(DAY_IDX[todayAbbr]??0,7).map((d,i)=>{
               const isThis=i===6;
               return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
-                <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{isThis?'NOW':`-${2-i}wk`}</div>
+                <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{isThis?'NOW':`-${6-i}wk`}</div>
                 <div style={{fontSize:10,fontWeight:isThis?700:400,color:isThis?TEXT:'#666',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
               </div>);
             })}
@@ -1423,60 +1405,31 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
           {applyFilters(todayWeekly).map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={weeklyCells(habit)}/>)}
           {dailyHabits.length>0&&<div style={{height:1,background:'#111',margin:'8px 0'}}/>}
         </>)}
-        {/* Daily habits — grouped by time of day */}
         {habits.length===0&&<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>✓</div><div style={{fontSize:15,fontWeight:700,marginBottom:6}}>No habits yet</div><div style={{fontSize:13}}>Tap + to add your first habit</div></div>}
-        {dailyHabits.length>0&&(()=>{
-          const DailyDateHeader=()=>(<div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'2px 16px 2px',marginBottom:2}}>
+        {dailyHabits.length>0&&(<>
+          <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'2px 16px 2px',marginBottom:2}}>
             <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
             {dates.map(d=>(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
               <div style={{fontSize:9,color:'#888',marginBottom:1}}>{dayLabel(d)}</div>
               <div style={{fontSize:11,fontWeight:d===today?700:400,color:d===today?TEXT:'#666',background:d===today?'#1a1a1a':'none',borderRadius:5,width:28,height:24,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{dayNum(d)}</div>
             </div>))}
-          </div>);
-          const TOD_GROUPS=[
-            {key:'morning',label:'🌅 Morning',test:t=>t&&t<'12:00'},
-            {key:'afternoon',label:'☀ Afternoon',test:t=>t&&t>='12:00'&&t<'17:00'},
-            {key:'night',label:'🌙 Night',test:t=>t&&t>='17:00'&&t<'22:00'},
-            {key:'4thmeal',label:'🍕 4th Meal',test:t=>t&&t>='22:00'},
-            {key:'none',label:'All Day',test:t=>!t},
-          ];
-          const filtered=applyFilters(dailyHabits);
-          const groups=TOD_GROUPS.map(g=>({...g,habits:filtered.filter(h=>g.test(h.scheduled_time))})).filter(g=>g.habits.length>0);
-          return(<>{groups.map((g,gi)=>(<div key={g.key}>
-            {groups.length>1&&<div style={{padding:'8px 16px 0',display:'flex',alignItems:'center',gap:8}}><div style={{fontSize:10,color:MUTED,fontWeight:700,letterSpacing:1,textTransform:'uppercase'}}>{g.label}</div></div>}
-            {gi===0&&<DailyDateHeader/>}
-            {g.habits.map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={dailyCells(habit)}/>)}
-          </div>))}</> );
-        })()}
+          </div>
+          {['morning','afternoon','night','4thmeal','allday'].map(gk=>{
+            const gfn={morning:h=>h.scheduled_time&&h.scheduled_time<'12:00',afternoon:h=>h.scheduled_time&&h.scheduled_time>='12:00'&&h.scheduled_time<'17:00',night:h=>h.scheduled_time&&h.scheduled_time>='17:00'&&h.scheduled_time<'22:00','4thmeal':h=>h.scheduled_time&&h.scheduled_time>='22:00',allday:h=>!h.scheduled_time};
+            const glbl={morning:'🌅 Morning',afternoon:'☀ Afternoon',night:'🌙 Night','4thmeal':'🍕 4th Meal',allday:'All Day'};
+            const gh=applyFilters(dailyHabits).filter(h=>gfn[gk](h));
+            if(!gh.length)return null;
+            const multi=['morning','afternoon','night','4thmeal','allday'].filter(k=>applyFilters(dailyHabits).some(h=>gfn[k](h))).length>1;
+            return(<div key={gk} style={{marginTop:gk!=='morning'&&multi?20:0}}>
+              {multi&&<div style={{padding:'10px 16px 4px',borderTop:gk!=='morning'?'1px solid #111':'none',display:'flex',alignItems:'center'}}><span style={{fontSize:11,color:MUTED,fontWeight:700,letterSpacing:1}}>{glbl[gk]}</span></div>}
+              {gh.map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={dailyCells(habit)}/>)}
+            </div>);
+          })}
+        </>)}
         {hideCompleted&&completedToday>0&&<div style={{textAlign:'center',padding:'12px',fontSize:12,color:'#444'}}>{completedToday} hidden · <button onClick={()=>setHideCompleted(false)} style={{background:'none',border:'none',color:GREEN,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Show all</button></div>}
       </>)}
 
-      {/* UPCOMING TAB — weekly habits by future day */}
-      {!loading&&habTab==='upcoming'&&(<>
-        {weeklyHabits.length===0&&<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:36,marginBottom:12}}>📅</div><div style={{fontSize:15,fontWeight:700,marginBottom:6}}>No weekly habits</div><div style={{fontSize:12}}>Tap + and choose Weekly when adding</div></div>}
-        {upcomingWeeklyDays.length===0&&weeklyHabits.length>0&&<div style={{textAlign:'center',padding:'40px 20px',color:MUTED,fontSize:13}}>No weekly habits on other days. Today's are on the Today tab.</div>}
-        {DAY_ABBR.filter(d=>d!==todayAbbr).map(day=>{
-          const dayHabits=applyFilters(weeklyHabits.filter(h=>h.weekly_day===day));
-          if(!dayHabits.length)return null;
-          return(<div key={day}>
-            <div style={{padding:'10px 16px 4px',display:'flex',alignItems:'center',gap:8}}>
-              <div style={{fontSize:11,fontWeight:700,color:MUTED,letterSpacing:1,textTransform:'uppercase'}}>{DAY_FULL_MAP[day]||day}</div>
-            </div>
-            <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px',marginBottom:2}}>
-              <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
-              {getLastNOccurrences(DAY_IDX[day]??0,3).map((d,i)=>{
-                const isThis=i===6;
-                return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
-                  <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{isThis?'NOW':`-${2-i}wk`}</div>
-                  <div style={{fontSize:11,fontWeight:isThis?700:400,color:isThis?TEXT:'#666',background:isThis?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
-                </div>);
-              })}
-            </div>
-            {dayHabits.map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={weeklyCells(habit)}/>)}
-          </div>);
-        })}
-      </>)}
-    </div>
+
 
     {/* Add sheet */}
     {showAdd&&(<Sheet onClose={()=>setShowAdd(false)} title="New Habit">
@@ -1491,9 +1444,10 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
         </div>
       </FormInput>
       <FormInput label="Frequency">
-        <div style={{display:'flex',gap:8}}>
-          {[['daily','Daily'],['weekly','Weekly']].map(([f,l])=>(<button key={f} onClick={()=>setNewHabitFreq(f)} style={{flex:1,padding:'9px',borderRadius:10,cursor:'pointer',background:newHabitFreq===f?'#0e1f10':'#1a1a1a',border:`1px solid ${newHabitFreq===f?GREEN:'#2a2a2a'}`,color:newHabitFreq===f?TEXT:MUTED,fontSize:13,fontFamily:'inherit'}}>{l}</button>))}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {[['daily','Daily'],['weekly','Weekly'],['custom','Every N Days']].map(([f,l])=>(<button key={f} onClick={()=>setNewHabitFreq(f)} style={{flex:1,minWidth:80,padding:'9px',borderRadius:10,cursor:'pointer',background:newHabitFreq===f?'#0e1f10':'#1a1a1a',border:`1px solid ${newHabitFreq===f?GREEN:'#2a2a2a'}`,color:newHabitFreq===f?TEXT:MUTED,fontSize:12,fontFamily:'inherit'}}>{l}</button>))}
         </div>
+        {newHabitFreq==='custom'&&(<div style={{marginTop:8,display:'flex',alignItems:'center',gap:8}}><span style={{color:MUTED,fontSize:12}}>Every</span><input type="number" min="2" max="365" value={newCustomDays} onChange={e=>setNewCustomDays(e.target.value)} style={{...inp(),width:70,marginBottom:0}} placeholder="N"/><span style={{color:MUTED,fontSize:12}}>days</span></div>)}
       </FormInput>
       {newHabitFreq==='weekly'&&(<FormInput label="Day of week">
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
@@ -1534,7 +1488,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
 // ═══════════════════════════════════════════════════════════════════
 const CD_RECURRINGS=[{key:null,label:'One-time'},{key:'weekly',label:'📅 Weekly'},{key:'monthly',label:'🗓 Monthly'},{key:'yearly',label:'🔁 Yearly'},{key:'every 1',label:'Every 1st'},{key:'every 15',label:'Every 15th'},{key:'every 25',label:'Every 25th'},{key:'custom_day',label:'Every Nth…'},{key:'custom_yearly',label:'📅 Yearly on Date…'}];
 
-function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection,buckets=[]}){
+function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
   const [name,setName]=useState(item?.name||'');
   const [cdEmoji,setCdEmoji]=useState(item?.emoji||'');
   const [date,setDate]=useState(item?.target_date||'');
@@ -1548,12 +1502,11 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection,buckets=[]}
   const [customYearlyMonth,setCustomYearlyMonth]=useState(()=>{const r=item?.recurring||'';const md=r.match(/^(\d{1,2})-(\d{1,2})$/);if(md)return md[1];const mn=r.match(/^([a-z]+)\s+(\d{1,2})$/i);if(mn){const months=['january','february','march','april','may','june','july','august','september','october','november','december'];const mo=months.findIndex(m=>m.startsWith(mn[1].toLowerCase()));return String(mo+1).padStart(2,'0');}return '';});
   const [customYearlyDay,setCustomYearlyDay]=useState(()=>{const r=item?.recurring||'';const md=r.match(/^(\d{1,2})-(\d{1,2})$/);if(md)return md[2];const mn=r.match(/^([a-z]+)\s+(\d{1,2})$/i);if(mn)return mn[2];return '';});
   const [saving,setSaving]=useState(false);
-  const [cdBucketId,setCdBucketId]=useState(item?.bucket_id||'');
   const isCountUp=direction==='countup';
   const effectiveRecur=recurring==='custom_day'?`every ${customDay||'1'}`:recurring==='custom_yearly'?(customYearlyMonth&&customYearlyDay?`${String(customYearlyMonth).padStart(2,'0')}-${String(customYearlyDay).padStart(2,'0')}`:null):recurring;
   const habit_col=CD_COLORS[cat]||BLUE;
   const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const save=async()=>{if(!name.trim()||!date)return;setSaving(true);await onSave({name:name.trim(),emoji:cdEmoji||null,target_date:date,first_date:firstDate||null,category:cat,recurring:effectiveRecur,direction,link:cdLink||null,notes:cdNotes||null,bucket_id:cdBucketId||null});setSaving(false);};
+  const save=async()=>{if(!name.trim()||!date)return;setSaving(true);await onSave({name:name.trim(),emoji:cdEmoji||null,target_date:date,first_date:firstDate||null,category:cat,recurring:effectiveRecur,direction,link:cdLink||null,notes:cdNotes||null});setSaving(false);};
   return(<Sheet onClose={onClose} title={item?(isCountUp?'Edit Count-Up':'Edit Countdown'):(isCountUp?'New Count-Up':'New Countdown')}>
     <FormInput label="Type">
       <div style={{display:'flex',gap:8}}>
@@ -1595,7 +1548,6 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection,buckets=[]}
     </>)}
     <FormInput label="Link (URL)"><input value={cdLink} onChange={e=>setCdLink(e.target.value)} placeholder="https://…" style={inp()}/></FormInput>
     <FormInput label="Notes"><textarea value={cdNotes} onChange={e=>setCdNotes(e.target.value)} rows={2} style={{...inp(),resize:'vertical'}}/></FormInput>
-    {buckets.length>0&&(<FormInput label="Bucket (optional)"><select value={cdBucketId} onChange={e=>setCdBucketId(e.target.value)} style={{...inp(),cursor:'pointer'}}><option value="">No bucket</option>{buckets.map(b=>(<option key={b.id} value={b.id}>{b.emoji} {b.name}</option>))}</select></FormInput>)}
     <BtnRow>
       {item&&<button onClick={()=>onDelete(item.id)} style={{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.2)',borderRadius:12,color:'#ef4444',fontSize:14,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit'}}>Delete</button>}
       <BtnGhost onClick={onClose}>Cancel</BtnGhost>
@@ -1604,24 +1556,73 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection,buckets=[]}
   </Sheet>);
 }
 
+function FreqInCountdown({user}){
+  const [fitems,setFitems]=useState([]);
+  const [fraw,setFraw]=useState({});
+  const [floading,setFloading]=useState(true);
+  const fload=useCallback(async()=>{
+    const{data:fmem}=await db.from('board_members').select('board_id').eq('user_id',user.id);
+    const fids=(fmem||[]).map(m=>m.board_id);
+    if(!fids.length){setFitems([]);setFloading(false);return;}
+    const{data:frows}=await db.from('tasks').select('*').in('board_id',fids).eq('done',false).not('frequency','is',null).neq('frequency','');
+    const frm={};
+    const fm=(frows||[]).filter(r=>r.frequency&&freqDays(r.frequency)!==null).map(r=>{
+      frm[r.id]=r;
+      const fd2=freqDays(r.frequency);
+      const sd2=daysSinceDone(r.completion_log||[]);
+      let dud2=null;
+      if(r.due_date){const td2=new Date(todayStr()+'T00:00:00');const dd2=new Date(r.due_date+'T00:00:00');dud2=Math.round((dd2-td2)/86400000);}
+      else if(fd2!==null&&sd2!==null){dud2=fd2-sd2;}
+      const isDo2=sd2===null||(dud2!==null&&dud2<=0);
+      return{id:r.id,title:r.title||'Untitled',freq:fd2,since:sd2,dud:dud2,isDo:isDo2};
+    });
+    setFraw(frm);setFitems(fm);setFloading(false);
+  },[user.id]);
+  useEffect(()=>{fload();},[fload]);
+  const fDone=async id=>{
+    const r=fraw[id];if(!r)return;
+    const cl=[...(r.completion_log||[]),{id:genId(),doneAt:new Date().toISOString(),note:''}];
+    await db.from('tasks').update({completion_log:cl,due_date:nextDue(r.frequency),status:'list'}).eq('id',id);
+    fload();
+  };
+  const doNow2=fitems.filter(t=>t.isDo).sort((a,b)=>(a.dud??9999)-(b.dud??9999));
+  if(floading||!doNow2.length)return null;
+  return(<>
+    <div style={{display:'flex',alignItems:'center',gap:6,padding:'8px 0 4px'}}>
+      <div style={{width:5,height:5,borderRadius:'50%',background:ORANGE}}/>
+      <span style={{fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:ORANGE}}>Recurring Tasks</span>
+    </div>
+    {doNow2.map(t=>{
+      const dc=t.dud===null?MUTED:t.dud<0?RED:t.dud===0?ORANGE:'#f7c94f';
+      const dl=t.dud===null?'—':t.dud<0?(Math.abs(t.dud)+'d over'):t.dud===0?'today':(t.dud+'d');
+      return(<div key={t.id} style={{background:'#141414',border:'1px solid '+dc+'33',borderRadius:14,padding:'12px 14px',marginBottom:7,display:'flex',alignItems:'center',gap:12}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:14,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.title}</div>
+          <div style={{fontSize:11,color:MUTED,marginTop:2}}>every {t.freq}d{t.since!==null?' · '+t.since+'d ago':' · never done'}</div>
+        </div>
+        <div style={{textAlign:'right',flexShrink:0}}>
+          <div style={{fontSize:22,fontWeight:800,color:dc,lineHeight:1}}>{dl}</div>
+          <button onClick={()=>fDone(t.id)} style={{marginTop:4,padding:'4px 10px',borderRadius:7,border:'none',background:LIME,color:'#000',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Done</button>
+        </div>
+      </div>);
+    })}
+  </>);
+}
+
 function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
   const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);
   const [mainTab,setMainTab]=useState('upcoming');const [catFilter,setCatFilter]=useState('all');
   const [sheet,setSheet]=useState(null);const [detailItem,setDetailItem]=useState(null);
-  const [buckets_cd,setBucketsCd]=useState([]);
 
   const load=useCallback(async()=>{
-    const[{data,error},{data:bk}]=await Promise.all([
-      db.from('countdowns').select('*').eq('user_id',user.id).order('target_date'),
-      db.from('habit_buckets').select('*').eq('user_id',user.id).order('sort_order',{ascending:true}),
-    ]);
-    if(!error)setItems(data||[]);setBucketsCd(bk||[]);setLoading(false);
+    const{data,error}=await db.from('countdowns').select('*').eq('user_id',user.id).order('target_date');
+    if(!error)setItems(data||[]);setLoading(false);
   },[user.id]);
   useEffect(()=>{load();},[load]);
 
-  const handleSave=async({name,emoji,target_date,first_date,category,recurring,direction,link,notes,bucket_id})=>{
-    if(sheet?.id){await db.from('countdowns').update({name,emoji:emoji||null,target_date,first_date:first_date||null,category,recurring,direction,link:link||null,notes:notes||null,bucket_id:bucket_id||null}).eq('id',sheet.id);}
-    else{await db.from('countdowns').insert({user_id:user.id,name,emoji:emoji||null,target_date,first_date:first_date||null,category,recurring,direction:direction||'countdown',link:link||null,notes:notes||null,bucket_id:bucket_id||null});}
+  const handleSave=async({name,emoji,target_date,first_date,category,recurring,direction,link,notes})=>{
+    if(sheet?.id){await db.from('countdowns').update({name,emoji:emoji||null,target_date,first_date:first_date||null,category,recurring,direction,link:link||null,notes:notes||null}).eq('id',sheet.id);}
+    else{await db.from('countdowns').insert({user_id:user.id,name,emoji:emoji||null,target_date,first_date:first_date||null,category,recurring,direction:direction||'countdown',link:link||null,notes:notes||null});}
     setSheet(null);load();
   };
   const handleDelete=async id=>{await db.from('countdowns').delete().eq('id',id);setSheet(null);load();};
@@ -1670,19 +1671,19 @@ function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
 
     {/* Chrome tabs */}
     <div className="chrome-tabs">
-      {[['upcoming','Upcoming',BLUE],['far','100+ Days','#aaa'],['countup','Count Up','#22d3ee'],['freq','Freq',ORANGE]].map(([k,l,col])=>(
+      {[['upcoming','Upcoming',BLUE],['far','100+ Days','#aaa'],['countup','Count Up','#22d3ee']].map(([k,l,col])=>(
         <button key={k} className={`chrome-tab ${mainTab===k?'active':'inactive'}`} onClick={()=>setMainTab(k)} style={{color:mainTab===k?col:'#666'}}>
           {l}{tabCounts[k]>0?` (${tabCounts[k]})`:''}{mainTab===k&&<span style={{position:'absolute',bottom:0,left:0,right:0,height:2,borderRadius:'2px 2px 0 0',background:col}}/>}
         </button>
       ))}
     </div>
 
-    {/* Category filter — not for countup or freq */}
-    {mainTab!=='countup'&&mainTab!=='freq'&&(<div className="pill-tabs">
+    {/* Category filter — not for countup */}
+    {mainTab!=='countup'&&(<div className="pill-tabs">
       {[{key:'all',label:'All',emoji:''},...CD_CATS].map(c=>(<button key={c.key} className={`pill-tab ${catFilter===c.key?'active':'inactive'}`} onClick={()=>setCatFilter(c.key)} style={{borderColor:catFilter===c.key?BLUE:BORDER,background:catFilter===c.key?BLUE:'#141414',color:catFilter===c.key?'#000':MUTED}}>{c.emoji?c.emoji+' ':''}{c.label}</button>))}
     </div>)}
 
-    {mainTab!=='freq'&&<div style={{flex:1,overflowY:'auto',padding:'4px 16px',paddingBottom:NAV_H+12}}>
+    <div style={{flex:1,overflowY:'auto',padding:'4px 16px',paddingBottom:NAV_H+12}}>
       {loading&&<div style={{display:'flex',justifyContent:'center',paddingTop:40}}><Spinner size={22} color={BLUE}/></div>}
       {!loading&&displayList.length===0&&(<div style={{textAlign:'center',padding:'60px 0',color:MUTED}}><div style={{fontSize:40,marginBottom:12}}>{mainTab==='countup'?'⏱':'⏳'}</div><div style={{fontSize:14}}>No {mainTab==='countup'?'count-up events':mainTab+' events'}</div></div>)}
       {!loading&&(()=>{
@@ -1700,7 +1701,6 @@ function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:TASK_FS,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isOverdue_?RED:'#e8e8e8'}}>{item.name}</div>
               <div style={{display:'flex',alignItems:'center',gap:6,marginTop:2,flexWrap:'wrap'}}>
-                {item.bucket_id&&(()=>{const bk=buckets_cd.find(b=>b.id===item.bucket_id);return bk?<span style={{fontSize:10,color:bk.color||MUTED,fontWeight:600}}>{bk.emoji} {bk.name}</span>:null;})()}
                 {yrsLabel!==null&&<span style={{fontSize:12,fontWeight:700,color:color}}>{isCountUp?`${yrsLabel} yrs`:`→ turns ${yrsLabel}`}</span>}
                 <span style={{fontSize:11,color:MUTED}}>
                   {new Date(item.target_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
@@ -1730,14 +1730,14 @@ function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
             {overdue.length>0&&<><SectionLabel label="Overdue" color={RED}/>{overdue.map((item,i)=>renderItem(item,i))}</>}
             {todayItems.length>0&&<><SectionLabel label="Today" color="#f7c94f"/>{todayItems.map((item,i)=>renderItem(item,i))}</>}
             {upcoming_.length>0&&<><SectionLabel label="Upcoming" color={BLUE}/>{upcoming_.map((item,i)=>renderItem(item,i))}</>}
+            <FreqInCountdown user={user}/>
           </>);
         }
         return displayList.map((item,i)=>renderItem(item,i));
       })()}
-    </div>}
+    </div>
 
-    {mainTab==='freq'&&<div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden'}}><FreqSection user={user} resetHour={resetHour}/></div>}
-    {sheet==='new'&&(<CDEventSheet item={null} onClose={()=>setSheet(null)} onSave={handleSave} onDelete={handleDelete} defaultDirection={mainTab==='countup'?'countup':'countdown'} buckets={buckets_cd}/>)}
+    {sheet==='new'&&(<CDEventSheet item={null} onClose={()=>setSheet(null)} onSave={handleSave} onDelete={handleDelete} defaultDirection={mainTab==='countup'?'countup':'countdown'}/>)}
     {detailItem&&(<CDDetailScreen item={detailItem} onClose={()=>setDetailItem(null)} onMarkComplete={async item=>{await handleMarkComplete(item,{stopPropagation:()=>{}});setDetailItem(null);}} onDelete={async id=>{await handleDelete(id);setDetailItem(null);}} onSaved={load}/>)}
   </div>);
 }
@@ -3698,10 +3698,6 @@ function SidebarDrawer({open,onClose,tab,setTab,user,onSignOut,lightMode,onToggl
     {key:'habits',label:'HABITS',icon:'✓',color:GREEN},
     {key:'sprint',label:'SPRINT',icon:'⚡',color:LIME},
     {key:'countdown',label:'COUNTDOWN',icon:'⏳',color:BLUE},
-    {key:'freq',label:'FREQ',icon:'🔁',color:ORANGE},
-    {key:'plan',label:'PLAN',icon:'▣',color:'#c084fc'},
-    {key:'plan',label:'PLAN',icon:'▣',color:'#c084fc'},
-    {key:'brands',label:'BRANDS',icon:'🏷',color:LIME},
   ];
   return(<>
     {open&&<div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:800,backdropFilter:'blur(2px)'}}/>}
@@ -3730,6 +3726,7 @@ function SidebarDrawer({open,onClose,tab,setTab,user,onSignOut,lightMode,onToggl
             <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:MUTED,fontSize:12}}>Day resets at</span><span style={{fontSize:12,fontWeight:700,color:ORANGE}}>3:00 AM</span></div>
             <div style={{display:'flex',justifyContent:'space-between'}}><span style={{color:MUTED,fontSize:12}}>Database</span><span style={{fontSize:12,color:TEXT}}>MR Supabase</span></div>
           </div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0 8px'}}><span style={{color:'#888',fontSize:12}}>Light Mode</span><div onClick={onToggleLight} style={{width:36,height:20,borderRadius:99,background:lightMode?'#CAFF4C':'#333',position:'relative',cursor:'pointer'}}><div style={{position:'absolute',top:3,left:lightMode?17:3,width:14,height:14,borderRadius:'50%',background:lightMode?'#000':'#666',transition:'left .2s'}}/></div></div>
           <button onClick={onSignOut} style={{width:'100%',padding:'11px',borderRadius:10,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.05)',color:'#ef4444',fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Sign Out</button>
         </div>
       </div>
@@ -3944,7 +3941,7 @@ function App(){
   if(screen==='loading')return(<div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#000',flexDirection:'column',gap:16}}><div style={{fontSize:36}}>☀</div><Spinner size={22}/></div>);
   if(screen==='auth')return<AuthScreen onAuth={u=>{setUser(u);setScreen('main');}}/>;
 
-  return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:lightMode?'#f0f0f0':'#000',color:lightMode?'#111':'#e8e8e8',overflow:'hidden'}}>
+  return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:'#000',overflow:'hidden'}}>
     <SidebarDrawer open={sidebarOpen} onClose={()=>setSidebarOpen(false)} tab={tab} setTab={switchTab} user={user} onSignOut={()=>db.auth.signOut()} lightMode={lightMode} onToggleLight={toggleLight}/>
     <TopBar tab={tab} onMenuOpen={()=>setSidebarOpen(true)}/>
     <div style={{flex:1,overflow:'hidden',position:'relative'}}>
@@ -3952,7 +3949,6 @@ function App(){
       <div style={{display:tab==='sprint'?'block':'none',height:'100%'}}>{user&&<SprintSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='habits'?'block':'none',height:'100%'}}>{user&&<HabitsSection user={user} resetHour={resetHour}/>}</div>
       <div style={{display:tab==='countdown'?'block':'none',height:'100%'}}>{user&&<CountdownSection user={user} resetHour={resetHour}/>}</div>
-      <div style={{display:tab==='brands'?'block':'none',height:'100%'}}>{user&&<BrandsSection user={user}/>}</div>
     </div>
     <BottomNav tab={tab} setTab={switchTab}/>
   </div>);

@@ -42,6 +42,13 @@ input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 .chrome-tab.active{color:#e8e8e8}
 .chrome-tab.inactive{color:#666}
 .chrome-tab.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
+/* Light Mode */
+body.light-mode { background: #f5f5f0 !important; color: #111 !important; }
+body.light-mode .section-header { background: #ececec !important; border-color: #ccc !important; }
+body.light-mode .chrome-tabs { background: #e8e8e0 !important; border-color: #ccc !important; }
+body.light-mode .chrome-tab { color: #555 !important; }
+body.light-mode .chrome-tab.active { background: #f5f5f0 !important; color: #111 !important; }
+body.light-mode .pill-tab { background: #e0e0d8 !important; color: #555 !important; border-color: #ccc !important; }
 </style>
 </head>
 <body>
@@ -130,7 +137,7 @@ const nextDue=frequency=>{const fd=freqDays(frequency);if(!fd)return todayStr();
 const fmtDateShort=s=>{if(!s)return'—';return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});};
 
 // ── Countdown helpers ────────────────────────────────────────────
-const CD_CATS=[{key:'countdown',label:'Countdown',emoji:'⏳'},{key:'anniversary',label:'Anniversary',emoji:'💍'},{key:'birthday',label:'Birthday',emoji:'🎂'},{key:'holiday',label:'Holiday',emoji:'🌸'}];
+const CD_CATS=[{key:'countdown',label:'Countdown',emoji:'⏳'},{key:'recurring',label:'Recurring',emoji:'🔁'},{key:'anniversary',label:'Anniversary',emoji:'💍'},{key:'birthday',label:'Birthday',emoji:'🎂'},{key:'holiday',label:'Holiday',emoji:'🌸'}];
 const CD_COLORS={countdown:BLUE,anniversary:'#c084fc',birthday:'#f472b6',holiday:ORANGE};
 const daysUntil=dateStr=>{const today=new Date();today.setHours(0,0,0,0);const target=new Date(dateStr+'T00:00:00');return Math.round((target-today)/86400000);};
 const nextOccurrence=(dateStr,recurring)=>{
@@ -178,7 +185,7 @@ const yearsFrom=dateStr=>{if(!dateStr)return null;const orig=new Date(dateStr+'T
 // For countdown items: age they WILL BE on that upcoming day
 const yearsUntilNext=dateStr=>{const cur=yearsFrom(dateStr);if(cur===null)return null;return cur+1;};
 // sprint day helper
-const getTodayAbbr=()=>['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date().getDay()];
+const getTodayAbbr=()=>{const now=new Date();if(now.getHours()<RESET_HOUR)now.setDate(now.getDate()-1);return['SUN','MON','TUE','WED','THU','FRI','SAT'][now.getDay()];};
 const isTodaySprint=sp=>{if(!sp.frequency_days)return true;return sp.frequency_days.split(',').includes(getTodayAbbr());};
 const sprintTimeColor=t=>{
   if(!t)return ORANGE;
@@ -1289,14 +1296,14 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
   // Build 7-week cells for weekly
   const weeklyCells=(habit)=>{
     const dayIdx=DAY_IDX[habit.weekly_day]??1;
-    const wkDates=getLastNOccurrences(dayIdx,7);
+    const wkDates=getLastNOccurrences(dayIdx,3);
     return wkDates.map(d=>renderWeeklyCell(habit,d));
   };
 
   // Week date headers for weekly habits
   const WeeklyDateHeader=({habit})=>{
     const dayIdx=DAY_IDX[habit.weekly_day]??1;
-    const wkDates=getLastNOccurrences(dayIdx,7);
+    const wkDates=getLastNOccurrences(dayIdx,3);
     return(<div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px 0',marginBottom:0}}>
       <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
       {wkDates.map((d,i)=>{
@@ -1344,6 +1351,9 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
         const dh_=applyFilters(weeklyHabits.filter(h=>h.weekly_day===habTab));
         const wd_=getLastNOccurrences(DAY_IDX[habTab]??0,3);
         if(!dh_.length)return(<div style={{textAlign:'center',padding:'60px 20px',color:MUTED}}><div style={{fontSize:32,marginBottom:10}}>📅</div><div style={{fontSize:13}}>No habits on {DAY_FULL_MAP[habTab]||habTab}</div></div>);
+        const gfn2={morning:h=>h.scheduled_time&&h.scheduled_time<'12:00',afternoon:h=>h.scheduled_time&&h.scheduled_time>='12:00'&&h.scheduled_time<'17:00',night:h=>h.scheduled_time&&h.scheduled_time>='17:00'&&h.scheduled_time<'22:00','4thmeal':h=>h.scheduled_time&&h.scheduled_time>='22:00',allday:h=>!h.scheduled_time};
+        const glbl2={morning:'🌅 Morning',afternoon:'☀ Afternoon',night:'🌙 Night','4thmeal':'🍕 4th Meal',allday:'All Day'};
+        const multi2=['morning','afternoon','night','4thmeal','allday'].filter(k=>dh_.some(h=>gfn2[k](h))).length>1;
         return(<>
           <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'6px 16px 2px'}}>
             <div style={{flex:1}}/><div style={{width:54}}/>
@@ -1352,7 +1362,14 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
               <div style={{fontSize:10,fontWeight:is_?700:400,color:is_?TEXT:'#666',background:is_?'#1a1a1a':'none',borderRadius:5,width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}>{new Date(d+'T00:00:00').getDate()}</div>
             </div>);})}   
           </div>
-          {dh_.map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={weeklyCells(habit)}/>)}
+          {['morning','afternoon','night','4thmeal','allday'].map(gk2=>{
+            const gh2=dh_.filter(h=>gfn2[gk2](h));
+            if(!gh2.length)return null;
+            return(<div key={gk2} style={{marginTop:gk2!=='morning'&&multi2?20:0}}>
+              {multi2&&<div style={{padding:'10px 16px 4px',borderTop:gk2!=='morning'?'1px solid #111':'none',display:'flex',alignItems:'center'}}><span style={{fontSize:11,color:MUTED,fontWeight:700,letterSpacing:1}}>{glbl2[gk2]}</span></div>}
+              {gh2.map((habit,idx,arr)=><HabitRow key={habit.id} habit={habit} idx={idx} list={arr} cells={weeklyCells(habit)}/>)}
+            </div>);
+          })}
         </>);
       })()}
       {/* TODAY TAB */}
@@ -1394,7 +1411,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
           {/* Weekly date header for today's weekly */}
           <div style={{display:'flex',alignItems:'flex-end',gap:2,padding:'0 16px',marginBottom:2}}>
             <div style={{flex:1,minWidth:0}}/><div style={{width:54,flexShrink:0}}/>
-            {getLastNOccurrences(DAY_IDX[todayAbbr]??0,7).map((d,i)=>{
+            {getLastNOccurrences(DAY_IDX[todayAbbr]??0,3).map((d,i)=>{
               const isThis=i===6;
               return(<div key={d} style={{width:34,textAlign:'center',flexShrink:0}}>
                 <div style={{fontSize:9,color:MUTED,marginBottom:1}}>{isThis?'NOW':`-${6-i}wk`}</div>
@@ -1555,58 +1572,6 @@ function CDEventSheet({item,onClose,onSave,onDelete,defaultDirection}){
   </Sheet>);
 }
 
-function FreqInCountdown({user}){
-  const [fitems,setFitems]=useState([]);
-  const [fraw,setFraw]=useState({});
-  const [floading,setFloading]=useState(true);
-  const fload=useCallback(async()=>{
-    const{data:fmem}=await db.from('board_members').select('board_id').eq('user_id',user.id);
-    const fids=(fmem||[]).map(m=>m.board_id);
-    if(!fids.length){setFitems([]);setFloading(false);return;}
-    const{data:frows}=await db.from('tasks').select('*').in('board_id',fids).eq('done',false).not('frequency','is',null).neq('frequency','');
-    const frm={};
-    const fm=(frows||[]).filter(r=>r.frequency&&freqDays(r.frequency)!==null).map(r=>{
-      frm[r.id]=r;
-      const fd2=freqDays(r.frequency);
-      const sd2=daysSinceDone(r.completion_log||[]);
-      let dud2=null;
-      if(r.due_date){const td2=new Date(todayStr()+'T00:00:00');const dd2=new Date(r.due_date+'T00:00:00');dud2=Math.round((dd2-td2)/86400000);}
-      else if(fd2!==null&&sd2!==null){dud2=fd2-sd2;}
-      const isDo2=sd2===null||(dud2!==null&&dud2<=0);
-      return{id:r.id,title:r.title||'Untitled',freq:fd2,since:sd2,dud:dud2,isDo:isDo2};
-    });
-    setFraw(frm);setFitems(fm);setFloading(false);
-  },[user.id]);
-  useEffect(()=>{fload();},[fload]);
-  const fDone=async id=>{
-    const r=fraw[id];if(!r)return;
-    const cl=[...(r.completion_log||[]),{id:genId(),doneAt:new Date().toISOString(),note:''}];
-    await db.from('tasks').update({completion_log:cl,due_date:nextDue(r.frequency),status:'list'}).eq('id',id);
-    fload();
-  };
-  const doNow2=fitems.filter(t=>t.isDo).sort((a,b)=>(a.dud??9999)-(b.dud??9999));
-  if(floading||!doNow2.length)return null;
-  return(<>
-    <div style={{display:'flex',alignItems:'center',gap:6,padding:'8px 0 4px'}}>
-      <div style={{width:5,height:5,borderRadius:'50%',background:ORANGE}}/>
-      <span style={{fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:ORANGE}}>Recurring Tasks</span>
-    </div>
-    {doNow2.map(t=>{
-      const dc=t.dud===null?MUTED:t.dud<0?RED:t.dud===0?ORANGE:'#f7c94f';
-      const dl=t.dud===null?'—':t.dud<0?(Math.abs(t.dud)+'d over'):t.dud===0?'today':(t.dud+'d');
-      return(<div key={t.id} style={{background:'#141414',border:'1px solid '+dc+'33',borderRadius:14,padding:'12px 14px',marginBottom:7,display:'flex',alignItems:'center',gap:12}}>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:14,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.title}</div>
-          <div style={{fontSize:11,color:MUTED,marginTop:2}}>every {t.freq}d{t.since!==null?' · '+t.since+'d ago':' · never done'}</div>
-        </div>
-        <div style={{textAlign:'right',flexShrink:0}}>
-          <div style={{fontSize:22,fontWeight:800,color:dc,lineHeight:1}}>{dl}</div>
-          <button onClick={()=>fDone(t.id)} style={{marginTop:4,padding:'4px 10px',borderRadius:7,border:'none',background:LIME,color:'#000',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Done</button>
-        </div>
-      </div>);
-    })}
-  </>);
-}
 
 function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
   const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);
@@ -1614,8 +1579,37 @@ function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
   const [sheet,setSheet]=useState(null);const [detailItem,setDetailItem]=useState(null);
 
   const load=useCallback(async()=>{
-    const{data,error}=await db.from('countdowns').select('*').eq('user_id',user.id).order('target_date');
-    if(!error)setItems(data||[]);setLoading(false);
+    const[{data,error},{data:mem}]=await Promise.all([
+      db.from('countdowns').select('*').eq('user_id',user.id).order('target_date'),
+      db.from('board_members').select('board_id').eq('user_id',user.id),
+    ]);
+    const cdItems=data||[];
+    // Load freq tasks and inject as 'recurring' type virtual countdowns
+    const bids=(mem||[]).map(m=>m.board_id);
+    let freqItems=[];
+    if(bids.length){
+      const{data:frows}=await db.from('tasks').select('*').in('board_id',bids).eq('done',false).not('frequency','is',null).neq('frequency','');
+      freqItems=(frows||[]).filter(r=>r.frequency&&freqDays(r.frequency)!==null).map(r=>{
+        const fd=freqDays(r.frequency);
+        const sd=daysSinceDone(r.completion_log||[]);
+        // Next due date
+        let nextDueDate=r.due_date||null;
+        if(!nextDueDate&&fd&&sd!==null){const d=new Date(localDateStr()+'T00:00:00');d.setDate(d.getDate()+(fd-sd));nextDueDate=localDateStr(d);}
+        else if(!nextDueDate){nextDueDate=localDateStr();}
+        return{
+          id:'freq_'+r.id,_freqTaskId:r.id,_freqTask:r,
+          name:r.title||'Untitled',emoji:'🔁',
+          target_date:nextDueDate,
+          category:'recurring',direction:'countdown',
+          recurring:r.frequency,
+          _freq:fd,_since:sd,
+          _completionLog:r.completion_log||[],
+          _boardId:r.board_id,
+        };
+      });
+    }
+    if(!error)setItems([...cdItems,...freqItems]);
+    setLoading(false);
   },[user.id]);
   useEffect(()=>{load();},[load]);
 
@@ -1624,17 +1618,19 @@ function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
     else{await db.from('countdowns').insert({user_id:user.id,name,emoji:emoji||null,target_date,first_date:first_date||null,category,recurring,direction:direction||'countdown',link:link||null,notes:notes||null});}
     setSheet(null);load();
   };
-  const handleDelete=async id=>{await db.from('countdowns').delete().eq('id',id);setSheet(null);load();};
+  const handleDelete=async id=>{if(String(id).startsWith('freq_')){const tid=String(id).replace('freq_','');await db.from('tasks').update({done:true}).eq('id',tid);}else{await db.from('countdowns').delete().eq('id',id);}setSheet(null);load();};
 
   // Mark a recurring countdown complete → advance to next occurrence
   const handleMarkComplete=async(item,e)=>{
     if(e&&e.stopPropagation)e.stopPropagation();
-    if(!item.recurring){
-      // Non-recurring: mark last_completed — it will disappear from overdue section
+    if(item._freqTaskId){
+      // Freq task: log completion, advance due date
+      const r=item._freqTask;
+      const cl=[...(r.completion_log||[]),{id:genId(),doneAt:new Date().toISOString(),note:''}];
+      await db.from('tasks').update({completion_log:cl,due_date:nextDue(r.frequency),status:'list'}).eq('id',item._freqTaskId);
+    }else if(!item.recurring){
       await db.from('countdowns').update({last_completed:localDateStr()}).eq('id',item.id);
     }else{
-      // Recurring: next occurrence is always AFTER today regardless of how overdue we are
-      // e.g. completing on the 17th for "every 15" → next 15th of NEXT month
       const newTarget=nextOccurrence(localDateStr(),item.recurring);
       await db.from('countdowns').update({target_date:newTarget,last_completed:localDateStr()}).eq('id',item.id);
     }
@@ -1691,11 +1687,12 @@ function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
         const renderItem=(item,i)=>{
           const ci=CD_CATS.find(c=>c.key===item.category)||CD_CATS[0];
           const isToday_=item._days===0;const isPast=item._days<0&&!isCountUp;
-          const color=isCountUp?'#22d3ee':(CD_COLORS[item.category]||BLUE);
+          const isFreq=!!item._freqTaskId;
+          const color=isFreq?ORANGE:isCountUp?'#22d3ee':(CD_COLORS[item.category]||BLUE);
           const daysVal=isCountUp?item._since:Math.abs(item._days);
           const isOverdue_=!isCountUp&&item._days<0;
           const yrsLabel=item.first_date?(isCountUp?yearsFrom(item.first_date):yearsUntilNext(item.first_date)):null;
-          return(<div key={item.id} style={{background:isOverdue_?'#180808':'#141414',border:`1px solid ${isToday_?'rgba(247,201,79,0.3)':isOverdue_?RED+'33':BORDER}`,borderRadius:16,padding:'14px 15px',marginBottom:8,display:'flex',alignItems:'center',gap:14,cursor:'pointer'}} onClick={()=>setDetailItem(item)}>
+          return(<div key={item.id} style={{background:isOverdue_?'#180808':'#141414',border:`1px solid ${isToday_?'rgba(247,201,79,0.3)':isOverdue_?RED+'33':BORDER}`,borderRadius:16,padding:'14px 15px',marginBottom:8,display:'flex',alignItems:'center',gap:14,cursor:'pointer'}} onClick={()=>isFreq?setDetailItem({...item,_isFreqView:true}):setDetailItem(item)}>
             <div style={{width:40,height:40,borderRadius:11,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,background:color+'1a',flexShrink:0}}>{item.emoji||(isCountUp?'⏱':ci.emoji)}</div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:TASK_FS,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isOverdue_?RED:'#e8e8e8'}}>{item.name}</div>
@@ -1729,7 +1726,6 @@ function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
             {overdue.length>0&&<><SectionLabel label="Overdue" color={RED}/>{overdue.map((item,i)=>renderItem(item,i))}</>}
             {todayItems.length>0&&<><SectionLabel label="Today" color="#f7c94f"/>{todayItems.map((item,i)=>renderItem(item,i))}</>}
             {upcoming_.length>0&&<><SectionLabel label="Upcoming" color={BLUE}/>{upcoming_.map((item,i)=>renderItem(item,i))}</>}
-            <FreqInCountdown user={user}/>
           </>);
         }
         return displayList.map((item,i)=>renderItem(item,i));
@@ -1737,7 +1733,8 @@ function CountdownSection({user,resetHour=RESET_HOUR,menuBtn}){
     </div>
 
     {sheet==='new'&&(<CDEventSheet item={null} onClose={()=>setSheet(null)} onSave={handleSave} onDelete={handleDelete} defaultDirection={mainTab==='countup'?'countup':'countdown'}/>)}
-    {detailItem&&(<CDDetailScreen item={detailItem} onClose={()=>setDetailItem(null)} onMarkComplete={async item=>{await handleMarkComplete(item,{stopPropagation:()=>{}});setDetailItem(null);}} onDelete={async id=>{await handleDelete(id);setDetailItem(null);}} onSaved={load}/>)}
+    {detailItem&&detailItem._isFreqView&&detailItem._freqTask&&(<FreqTaskDetail task={detailItem._freqTask} boards={[]} onClose={()=>setDetailItem(null)} onSave={async(id,upd)=>{await db.from('tasks').update(upd).eq('id',id);setDetailItem(null);load();}} onDelete={async id=>{if(!window.confirm('Delete?'))return;await db.from('tasks').update({done:true}).eq('id',id);setDetailItem(null);load();}} onMarkDone={async id=>{await handleMarkComplete(detailItem,{stopPropagation:()=>{}});setDetailItem(null);}}/>)}
+    {detailItem&&!detailItem._isFreqView&&(<CDDetailScreen item={detailItem} onClose={()=>setDetailItem(null)} onMarkComplete={async item=>{await handleMarkComplete(item,{stopPropagation:()=>{}});setDetailItem(null);}} onDelete={async id=>{await handleDelete(id);setDetailItem(null);}} onSaved={load}/>)}
   </div>);
 }
 
@@ -3928,8 +3925,8 @@ function App(){
   const resetHour=RESET_HOUR;
   const [nowKey,setNowKey]=useState(0);
   const [lightMode,setLightMode]=useState(()=>{try{return localStorage.getItem('dayman_light')==='1';}catch{return false;}});
-  const toggleLight=()=>setLightMode(v=>{const n=!v;try{localStorage.setItem('dayman_light',n?'1':'0');}catch{}document.body.classList.toggle('light-mode',n);return n;});
-  useEffect(()=>{document.body.classList.toggle('light-mode',lightMode);},[]);
+  const toggleLight=()=>setLightMode(v=>{const n=!v;try{localStorage.setItem('dayman_light',n?'1':'0');}catch{}document.body.classList.toggle('light-mode',n);document.documentElement.classList.toggle('light-mode',n);return n;});
+  useEffect(()=>{document.body.classList.toggle('light-mode',lightMode);document.documentElement.classList.toggle('light-mode',lightMode);},[]);
 
   useEffect(()=>{
     db.auth.getSession().then(({data:{session}})=>{if(session){setUser(session.user);setScreen('main');}else setScreen('auth');});

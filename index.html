@@ -1428,8 +1428,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
         </>)}
         {hideCompleted&&completedToday>0&&<div style={{textAlign:'center',padding:'12px',fontSize:12,color:'#444'}}>{completedToday} hidden · <button onClick={()=>setHideCompleted(false)} style={{background:'none',border:'none',color:GREEN,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Show all</button></div>}
       </>)}
-
-
+    </div>
 
     {/* Add sheet */}
     {showAdd&&(<Sheet onClose={()=>setShowAdd(false)} title="New Habit">

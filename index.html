@@ -867,8 +867,8 @@ function HabitDetailScreen({habit,user,sprints=[],buckets=[],onClose,onSave,onDe
     if(habit.type==='bool'){if(cur===null)next=1;else if(cur===1)next=-1;else next=null;}
     else{next=(cur||0)+1;if(next>9)next=null;}
     setLogs(l=>{const nl={...l};if(next===null)delete nl[date];else nl[date]=next;return nl;});
-    if(next===null){await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);}
-    else{await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});}
+    await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date).eq('user_id',user.id);
+    if(next!==null){await db.from('habit_logs').insert({user_id:user.id,habit_id:habit.id,log_date:date,value:next});}
   };
 
   // Calendar: build dates for the currently viewed month
@@ -1115,9 +1115,15 @@ function HabitTimeView({user,resetHour=RESET_HOUR,timeOfDay,color}){
     else{next=(cur||0)+1;if(next>9)next=null;}
     setLogs(l=>{const nl={...l};if(next===null)delete nl[key];else nl[key]=next;return nl;});
     try{
-      if(next===null){const{error}=await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);if(error)throw error;}
-      else{const{error}=await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});if(error)throw error;}
-    }catch(err){console.error('habit_log save failed:',err?.message||err);setLogs(l=>{const nl={...l};if(cur===null)delete nl[key];else nl[key]=cur;return nl;});}
+      await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date).eq('user_id',user.id);
+      if(next!==null){
+        const{error}=await db.from('habit_logs').insert({user_id:user.id,habit_id:habit.id,log_date:date,value:next});
+        if(error)throw error;
+      }
+    }catch(err){
+      console.error('habit_log save failed:',err?.message||err);
+      setLogs(l=>{const nl={...l};if(cur===null)delete nl[key];else nl[key]=cur;return nl;});
+    }
   };
   const renderCell=(habit,date)=>{
     const val=logs[habit.id+'_'+date]??null;const isToday_=date===today;const col=habit.color||color;
@@ -1227,9 +1233,17 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
     else{next=(cur||0)+1;if(next>9)next=null;}
     setLogs(l=>{const nl={...l};if(next===null)delete nl[key];else nl[key]=next;return nl;});
     try{
-      if(next===null){const{error}=await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);if(error)throw error;}
-      else{const{error}=await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});if(error)throw error;}
-    }catch(err){console.error('habit_log save failed:',err?.message||err);setLogs(l=>{const nl={...l};if(cur===null)delete nl[key];else nl[key]=cur;return nl;});}
+      // Always delete first, then insert if needed — avoids unique constraint dependency
+      await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date).eq('user_id',user.id);
+      if(next!==null){
+        const{error}=await db.from('habit_logs').insert({user_id:user.id,habit_id:habit.id,log_date:date,value:next});
+        if(error)throw error;
+      }
+    }catch(err){
+      console.error('habit_log save failed:',err?.message||err);
+      // Roll back optimistic update
+      setLogs(l=>{const nl={...l};if(cur===null)delete nl[key];else nl[key]=cur;return nl;});
+    }
   };
 
   // Streak for daily habits: consecutive days
@@ -1510,7 +1524,8 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
                   </div>
                 </div>
               </div>
-              <button onClick={async e=>{e.stopPropagation();const DAY_TO_DOW2={SUN:0,MON:1,TUE:2,WED:3,THU:4,FRI:5,SAT:6};const hd=DAY_TO_DOW2[habit.weekly_day]??0;const now2=new Date();const dow2=now2.getDay();const tod2=dow2===0?6:dow2-1;const hd2=hd===0?6:hd-1;const daysAgo2=tod2-hd2;const dt2=new Date();dt2.setDate(dt2.getDate()-daysAgo2);const ds2=localDateStr(dt2);await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:ds2,value:-1},{onConflict:'habit_id,log_date'});load();}} style={{padding:'5px 10px',borderRadius:7,border:`1px solid #555`,background:'transparent',color:MUTED,fontSize:11,cursor:'pointer',fontFamily:'inherit',flexShrink:0,marginRight:6}}>Skip</button>
+              <button onClick={async e=>{e.stopPropagation();const DAY_TO_DOW2={SUN:0,MON:1,TUE:2,WED:3,THU:4,FRI:5,SAT:6};const hd=DAY_TO_DOW2[habit.weekly_day]??0;const now2=new Date();const dow2=now2.getDay();const tod2=dow2===0?6:dow2-1;const hd2=hd===0?6:hd-1;const daysAgo2=tod2-hd2;const dt2=new Date();dt2.setDate(dt2.getDate()-daysAgo2);const ds2=localDateStr(dt2);await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',ds2).eq('user_id',user.id);
+await db.from('habit_logs').insert({user_id:user.id,habit_id:habit.id,log_date:ds2,value:-1});load();}} style={{padding:'5px 10px',borderRadius:7,border:`1px solid #555`,background:'transparent',color:MUTED,fontSize:11,cursor:'pointer',fontFamily:'inherit',flexShrink:0,marginRight:6}}>Skip</button>
               <div style={{width:54,flexShrink:0,textAlign:'right',paddingRight:4}}>
                 {streak>0&&<div style={{fontSize:11,fontWeight:700,color:col,lineHeight:1.2,textAlign:'right'}}><div style={{fontSize:13}}>{streak}</div><div style={{fontSize:8,opacity:0.8}}>weeks</div></div>}
               </div>
@@ -2592,7 +2607,8 @@ function NowSection({user,resetHour=RESET_HOUR,onNavigate,menuBtn}){
     try{
       if(item.type==='habit'){
         const habitId=id.replace('hb_','');
-        await db.from('habit_logs').upsert({user_id:user.id,habit_id:habitId,log_date:today,value:1},{onConflict:'habit_id,log_date'});
+        await db.from('habit_logs').delete().eq('habit_id',habitId).eq('log_date',today).eq('user_id',user.id);
+await db.from('habit_logs').insert({user_id:user.id,habit_id:habitId,log_date:today,value:1});
       }else if(item.type==='sprint'){
         const sprintId=id.replace('sp_','');const resetH=resetHour??4;const todayK=todayKey(resetH);
         await db.from('sprints_v2').update({daily_state:{done:true,date:todayK}}).eq('id',sprintId).eq('user_id',user.id);

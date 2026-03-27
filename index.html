@@ -800,8 +800,10 @@ const HABIT_COLORS=['#38bdf8','#4ade80','#fb923c','#f472b6','#a78bfa','#facc15',
 function getLast7Dates(){
   const days=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);days.push(localDateStr(d));}return days;
 }
-function getLast3Dates(){
-  const days=[];for(let i=2;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);days.push(localDateStr(d));}return days;
+function getLast3Dates(resetHour){
+  const rh=resetHour??RESET_HOUR;
+  const base=new Date();if(base.getHours()<rh)base.setDate(base.getDate()-1);
+  const days=[];for(let i=2;i>=0;i--){const d=new Date(base);d.setDate(d.getDate()-i);days.push(localDateStr(d));}return days;
 }
 function dayLabel(dateStr){
   const d=new Date(dateStr+'T00:00:00');return['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
@@ -1081,11 +1083,11 @@ function BucketManager({user,buckets,onClose,onReload}){
 function HabitTimeView({user,resetHour=RESET_HOUR,timeOfDay,color}){
   const [habits,setHabits]=useState([]);const [buckets,setBuckets]=useState([]);const [logs,setLogs]=useState({});const [loading,setLoading]=useState(true);
   const today=useMemo(()=>{const now=new Date();if(now.getHours()<resetHour){const y=new Date(now);y.setDate(y.getDate()-1);return localDateStr(y);}return localDateStr(now);},[resetHour]);
-  const dates=useMemo(()=>getLast3Dates(),[]);
+  const dates=useMemo(()=>getLast3Dates(resetHour),[resetHour]);
   const load=useCallback(async()=>{
     const[{data:h},{data:l},{data:bk}]=await Promise.all([
       db.from('habits').select('*').eq('user_id',user.id).order('sort_order',{ascending:true}),
-      db.from('habit_logs').select('*').eq('user_id',user.id).lte('log_date',today),
+      db.from('habit_logs').select('*').eq('user_id',user.id),
       db.from('habit_buckets').select('*').eq('user_id',user.id),
     ]);
     const map={};(l||[]).forEach(r=>{map[r.habit_id+'_'+r.log_date]=r.value;});
@@ -1112,8 +1114,10 @@ function HabitTimeView({user,resetHour=RESET_HOUR,timeOfDay,color}){
     if(habit.type==='bool'){if(cur===null)next=1;else if(cur===1)next=-1;else next=null;}
     else{next=(cur||0)+1;if(next>9)next=null;}
     setLogs(l=>{const nl={...l};if(next===null)delete nl[key];else nl[key]=next;return nl;});
-    if(next===null)await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);
-    else await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});
+    try{
+      if(next===null){const{error}=await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);if(error)throw error;}
+      else{const{error}=await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});if(error)throw error;}
+    }catch(err){console.error('habit_log save failed:',err?.message||err);setLogs(l=>{const nl={...l};if(cur===null)delete nl[key];else nl[key]=cur;return nl;});}
   };
   const renderCell=(habit,date)=>{
     const val=logs[habit.id+'_'+date]??null;const isToday_=date===today;const col=habit.color||color;
@@ -1191,7 +1195,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
   const [newBucketId,setNewBucketId]=useState('');
   const [saving,setSaving]=useState(false);
   const [sprints,setSprints]=useState([]);
-  const dates=useMemo(()=>getLast3Dates(),[]);
+  const dates=useMemo(()=>getLast3Dates(resetHour),[resetHour]);
   // Use resetHour-aware today: if current hour < resetHour, "today" is yesterday
   const today=useMemo(()=>{const now=new Date();if(now.getHours()<resetHour){const y=new Date(now);y.setDate(y.getDate()-1);return localDateStr(y);}return localDateStr(now);},[resetHour]);
 
@@ -1199,7 +1203,7 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
   const load=useCallback(async()=>{
     const[{data:h},{data:l},{data:sp},{data:bk}]=await Promise.all([
       db.from('habits').select('*').eq('user_id',user.id).order('sort_order',{ascending:true}).order('created_at',{ascending:true}),
-      db.from('habit_logs').select('*').eq('user_id',user.id).lte('log_date',today),
+      db.from('habit_logs').select('*').eq('user_id',user.id),
       db.from('sprints_v2').select('id,name,emoji').eq('user_id',user.id).order('created_at'),
       db.from('habit_buckets').select('*').eq('user_id',user.id).order('sort_order',{ascending:true})
     ]);
@@ -1222,8 +1226,10 @@ function HabitsSection({user,resetHour=RESET_HOUR,menuBtn}){
     if(habit.type==='bool'){if(cur===null)next=1;else if(cur===1)next=-1;else next=null;}
     else{next=(cur||0)+1;if(next>9)next=null;}
     setLogs(l=>{const nl={...l};if(next===null)delete nl[key];else nl[key]=next;return nl;});
-    if(next===null)await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);
-    else await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});
+    try{
+      if(next===null){const{error}=await db.from('habit_logs').delete().eq('habit_id',habit.id).eq('log_date',date);if(error)throw error;}
+      else{const{error}=await db.from('habit_logs').upsert({user_id:user.id,habit_id:habit.id,log_date:date,value:next},{onConflict:'habit_id,log_date'});if(error)throw error;}
+    }catch(err){console.error('habit_log save failed:',err?.message||err);setLogs(l=>{const nl={...l};if(cur===null)delete nl[key];else nl[key]=cur;return nl;});}
   };
 
   // Streak for daily habits: consecutive days

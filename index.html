@@ -762,7 +762,23 @@ function SprintSection({user,resetHour:resetHourProp=RESET_HOUR,menuBtn}){
       {!loadingList&&sprintTab!=='today'&&tabList.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
     </div>
 
-    {previewTarget&&(<SprintDetail sprint={previewTarget} settings={settings} isDone={!!resolveDS(previewTarget.daily_state,resetHour).done} onClose={()=>setPreviewTarget(null)} onRun={sp=>{setPreviewTarget(null);setRunTarget(sp);setView('run');}} onEdit={sp=>{setPreviewTarget(null);setEditTarget(sp);setView('edit');}} onDuplicate={sp=>{setPreviewTarget(null);handleDuplicate(sp);}} onSaveSkipped={(id,ids)=>saveDailyState(id,{skipped:ids})} onToggleDone={done=>saveDailyState(previewTarget.id,{done})}/>)}
+    {previewTarget&&(<>
+      <SprintDetail sprint={previewTarget} settings={settings} isDone={!!resolveDS(previewTarget.daily_state,resetHour).done} onClose={()=>setPreviewTarget(null)} onRun={sp=>{setPreviewTarget(null);setRunTarget(sp);setView('run');}} onEdit={sp=>{setPreviewTarget(null);setEditTarget(sp);setView('edit');}} onDuplicate={sp=>{setPreviewTarget(null);handleDuplicate(sp);}} onSaveSkipped={(id,ids)=>saveDailyState(id,{skipped:ids})} onToggleDone={done=>saveDailyState(previewTarget.id,{done})}/>
+      <div style={{position:'fixed',bottom:28,left:'50%',transform:'translateX(-50%)',zIndex:600,display:'flex',gap:8}}>
+        <button onClick={()=>{
+          const slug=toSlug(previewTarget.name);
+          const url=location.origin+location.pathname+'#'+slug;
+          navigator.clipboard?.writeText(url).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}).catch(()=>{});
+        }} style={{padding:'10px 20px',borderRadius:20,border:'none',background:copied?GREEN:LIME,color:'#000',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6,boxShadow:'0 4px 20px rgba(0,0,0,.6)',transition:'background .2s'}}>
+          {copied?'✓ Copied!':'🔗 Copy Link'}
+        </button>
+        <button onClick={()=>{
+          const slug=toSlug(previewTarget.name);
+          const url=location.origin+location.pathname+'#'+slug;
+          const text=window.prompt('Sprint URL (copy this):',url);
+        }} style={{display:'none'}}/>
+      </div>
+    </>)}
     {showHistory&&<HistoryPanel user={user} onClose={()=>setShowHistory(false)}/>}
     {showSettings&&<SettingsPanel settings={settings} onSave={s=>{setSettings(s);saveSettings(user.id,s);setShowSettings(false);}} onClose={()=>setShowSettings(false)}/>}
   </div>);
@@ -1078,6 +1094,7 @@ function BucketManager({user,buckets,onClose,onReload}){
 
 // Parse the URL hash/search for a sprint identifier
 // Supports: #sprint-name, #sprint-id, ?sprint=name, ?id=uuid
+const toSlug=n=>n.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 function parseDeepLink(){
   const hash=location.hash.replace('#','').trim();
   const params=new URLSearchParams(location.search);
@@ -1260,13 +1277,6 @@ function SprintApp({user,onSignOut}){
         {label:'📊 Run History',action:()=>setShowHistory(true)},
         {label:'⚙️ Settings',action:()=>setShowSettings(true)},
         '---',
-        {label:'🔗 Copy Sprint Link',action:()=>{
-          if(previewTarget){
-            const slug=previewTarget.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-            navigator.clipboard?.writeText(location.origin+location.pathname+'#'+slug).catch(()=>{});
-          }
-        }},
-        '---',
         {label:'Sign Out',action:onSignOut,danger:true},
       ]}/>
       <button onClick={()=>{setEditTarget(null);setView('edit');}} style={{background:LIME,border:'none',borderRadius:8,padding:'4px 14px',cursor:'pointer',color:'#000',fontSize:20,fontWeight:800,fontFamily:'inherit',lineHeight:1.2}}>+</button>
@@ -1306,7 +1316,23 @@ function SprintApp({user,onSignOut}){
       {!loadingList&&sprintTab!=='today'&&tabList.map(sp=><SprintCard key={sp.id} sp={sp}/>)}
     </div>
 
-    {previewTarget&&(<SprintDetail sprint={previewTarget} settings={settings} isDone={!!resolveDS(previewTarget.daily_state,resetHour).done} onClose={()=>setPreviewTarget(null)} onRun={sp=>{setPreviewTarget(null);setRunTarget(sp);setView('run');}} onEdit={sp=>{setPreviewTarget(null);setEditTarget(sp);setView('edit');}} onDuplicate={sp=>{setPreviewTarget(null);handleDuplicate(sp);}} onSaveSkipped={(id,ids)=>saveDailyState(id,{skipped:ids})} onToggleDone={done=>saveDailyState(previewTarget.id,{done})}/>)}
+    {previewTarget&&(<>
+      <SprintDetail sprint={previewTarget} settings={settings} isDone={!!resolveDS(previewTarget.daily_state,resetHour).done} onClose={()=>setPreviewTarget(null)} onRun={sp=>{setPreviewTarget(null);setRunTarget(sp);setView('run');}} onEdit={sp=>{setPreviewTarget(null);setEditTarget(sp);setView('edit');}} onDuplicate={sp=>{setPreviewTarget(null);handleDuplicate(sp);}} onSaveSkipped={(id,ids)=>saveDailyState(id,{skipped:ids})} onToggleDone={done=>saveDailyState(previewTarget.id,{done})}/>
+      <div style={{position:'fixed',bottom:28,left:'50%',transform:'translateX(-50%)',zIndex:600,display:'flex',gap:8}}>
+        <button onClick={()=>{
+          const slug=toSlug(previewTarget.name);
+          const url=location.origin+location.pathname+'#'+slug;
+          navigator.clipboard?.writeText(url).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}).catch(()=>{});
+        }} style={{padding:'10px 20px',borderRadius:20,border:'none',background:copied?GREEN:LIME,color:'#000',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6,boxShadow:'0 4px 20px rgba(0,0,0,.6)',transition:'background .2s'}}>
+          {copied?'✓ Copied!':'🔗 Copy Link'}
+        </button>
+        <button onClick={()=>{
+          const slug=toSlug(previewTarget.name);
+          const url=location.origin+location.pathname+'#'+slug;
+          const text=window.prompt('Sprint URL (copy this):',url);
+        }} style={{display:'none'}}/>
+      </div>
+    </>)}
     {showHistory&&<HistoryPanel user={user} onClose={()=>setShowHistory(false)}/>}
     {showSettings&&<SettingsPanel settings={settings} onSave={s=>{setSettings(s);saveSettings(user.id,s);setShowSettings(false);}} onClose={()=>setShowSettings(false)}/>}
   </div>);
